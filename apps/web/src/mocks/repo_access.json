@@ -1,0 +1,57 @@
+[
+  {
+    "person": "p9",
+    "role": "Admin",
+    "agent_rights": "Branches, PRs, deploy previews"
+  },
+  {
+    "person": "p2",
+    "role": "Admin",
+    "agent_rights": "Branches, PRs, deploy previews"
+  },
+  {
+    "person": "p1",
+    "role": "Write",
+    "agent_rights": "Branches and PRs · no merge to main"
+  },
+  {
+    "person": "p4",
+    "role": "Write",
+    "agent_rights": "Branches and PRs · no merge to main"
+  },
+  {
+    "person": "p5",
+    "role": "Write",
+    "agent_rights": "Branches and PRs · no merge to main"
+  },
+  {
+    "person": "p6",
+    "role": "Write",
+    "agent_rights": "Branches and PRs · no merge to main"
+  },
+  {
+    "person": "p11",
+    "role": "Write",
+    "agent_rights": "Branches and PRs · no merge to main"
+  },
+  {
+    "person": "p10",
+    "role": "Write",
+    "agent_rights": "Branches in examples/ only"
+  },
+  {
+    "person": "p8",
+    "role": "Write",
+    "agent_rights": "Branches in analytics/ only"
+  },
+  {
+    "person": "p7",
+    "role": "Read",
+    "agent_rights": "Read only"
+  },
+  {
+    "person": "p3",
+    "role": "Read",
+    "agent_rights": "Read only"
+  }
+]

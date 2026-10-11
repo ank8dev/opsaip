@@ -1,0 +1,46 @@
+[
+  {
+    "person": "p9",
+    "role": "Admin"
+  },
+  {
+    "person": "p2",
+    "role": "Admin"
+  },
+  {
+    "person": "p3",
+    "role": "Admin"
+  },
+  {
+    "person": "p1",
+    "role": "Member"
+  },
+  {
+    "person": "p4",
+    "role": "Member"
+  },
+  {
+    "person": "p5",
+    "role": "Member"
+  },
+  {
+    "person": "p6",
+    "role": "Member"
+  },
+  {
+    "person": "p7",
+    "role": "Member"
+  },
+  {
+    "person": "p8",
+    "role": "Member"
+  },
+  {
+    "person": "p10",
+    "role": "Member"
+  },
+  {
+    "person": "p11",
+    "role": "Member"
+  }
+]

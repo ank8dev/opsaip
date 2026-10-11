@@ -1,0 +1,11 @@
+[
+  {
+    "name": "tessera/voice-platform",
+    "url": "github.com/tessera/voice-platform",
+    "default_branch": "main",
+    "protection": "PR + 2 reviews and green CI",
+    "visibility": "Private",
+    "last_push": "2026-10-10T19:41:00Z",
+    "last_push_by": "p5"
+  }
+]
