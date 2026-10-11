@@ -1,0 +1,16 @@
+{
+  "name": "opsaip",
+  "private": true,
+  "description": "Open source, self-hosted conductor for developer teams and their AI agents",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @opsaip/web --",
+    "build": "npm run build --workspace @opsaip/web",
+    "preview": "npm run preview --workspace @opsaip/web --"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
