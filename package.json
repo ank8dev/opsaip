@@ -12,5 +12,6 @@
   },
   "engines": {
     "node": ">=20.19"
-  }
+  },
+  "license": "AGPL-3.0-only"
 }

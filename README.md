@@ -65,4 +65,5 @@ Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.
 
 ## License
 
-Not chosen yet.
+[GNU AGPL v3](LICENSE). You can use, self-host, change and share Opsaip freely. If you run a
+modified version as a service for others, you must publish your changes under the same license.
