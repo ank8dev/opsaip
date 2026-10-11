@@ -1,0 +1,32 @@
+[
+  {
+    "status": "To do",
+    "linear": "Todo",
+    "github": "No branch yet",
+    "notion": "Not started"
+  },
+  {
+    "status": "In progress",
+    "linear": "In Progress",
+    "github": "Branch or draft PR",
+    "notion": "In progress"
+  },
+  {
+    "status": "In review",
+    "linear": "In Review",
+    "github": "PR open",
+    "notion": "In progress"
+  },
+  {
+    "status": "Done",
+    "linear": "Done",
+    "github": "PR merged",
+    "notion": "Done"
+  },
+  {
+    "status": "Canceled",
+    "linear": "Canceled",
+    "github": "PR closed, not merged",
+    "notion": "Done"
+  }
+]

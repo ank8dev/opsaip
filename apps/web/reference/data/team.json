@@ -1,0 +1,123 @@
+[
+  {
+    "id": "p1",
+    "name": "Mira Chen",
+    "initials": "MC",
+    "role": "Frontend lead",
+    "tz": "Europe/Stockholm",
+    "start": 9,
+    "end": 18,
+    "focus": "Live call view redesign",
+    "changing": "apps/console/app/calls/page.tsx · PR #412"
+  },
+  {
+    "id": "p2",
+    "name": "Tom Becker",
+    "initials": "TB",
+    "role": "Platform & DevOps",
+    "tz": "Europe/Berlin",
+    "start": 8,
+    "end": 17,
+    "focus": "Release 3.2",
+    "changing": "infra/k8s/voice-gateway.yaml"
+  },
+  {
+    "id": "p3",
+    "name": "Sana Iqbal",
+    "initials": "SI",
+    "role": "Product lead",
+    "tz": "Asia/Karachi",
+    "start": 10,
+    "end": 19,
+    "focus": "Fjord Bank pilot",
+    "changing": "Linear · TES cycle 21"
+  },
+  {
+    "id": "p4",
+    "name": "Leo Martins",
+    "initials": "LM",
+    "role": "Backend",
+    "tz": "America/Sao_Paulo",
+    "start": 9,
+    "end": 18,
+    "focus": "Usage-based billing",
+    "changing": "services/billing/usage.ts"
+  },
+  {
+    "id": "p5",
+    "name": "Aiko Tanaka",
+    "initials": "AT",
+    "role": "ML engineer · speech",
+    "tz": "Asia/Tokyo",
+    "start": 10,
+    "end": 19,
+    "focus": "Streaming TTS latency",
+    "changing": "models/tts/streaming.py"
+  },
+  {
+    "id": "p6",
+    "name": "Daniel Okafor",
+    "initials": "DO",
+    "role": "ML infrastructure",
+    "tz": "Africa/Lagos",
+    "start": 9,
+    "end": 18,
+    "focus": "GPU autoscaling",
+    "changing": "infra/gpu/autoscaler.go"
+  },
+  {
+    "id": "p7",
+    "name": "Priya Raman",
+    "initials": "PR",
+    "role": "Design lead",
+    "tz": "Asia/Kolkata",
+    "start": 10,
+    "end": 19,
+    "focus": "Voice persona editor",
+    "changing": "Figma · Persona editor v2"
+  },
+  {
+    "id": "p8",
+    "name": "Hugo Moreau",
+    "initials": "HM",
+    "role": "Growth & data",
+    "tz": "Europe/Paris",
+    "start": 9,
+    "end": 18,
+    "focus": "Self-serve onboarding",
+    "changing": "analytics/dbt/onboarding.sql"
+  },
+  {
+    "id": "p9",
+    "name": "Elena Petrova",
+    "initials": "EP",
+    "role": "CTO",
+    "tz": "Europe/Tallinn",
+    "start": 9,
+    "end": 19,
+    "focus": "SOC 2 readiness",
+    "changing": "docs/security/soc2.md"
+  },
+  {
+    "id": "p10",
+    "name": "Jake Rivera",
+    "initials": "JR",
+    "role": "Solutions engineer",
+    "tz": "America/New_York",
+    "start": 9,
+    "end": 18,
+    "focus": "Fjord Bank integration",
+    "changing": "examples/fjord-bank/ivr-flow.json"
+  },
+  {
+    "id": "p11",
+    "name": "Noor Haddad",
+    "initials": "NH",
+    "role": "Security & compliance",
+    "tz": "Asia/Dubai",
+    "start": 9,
+    "end": 18,
+    "focus": "PII redaction",
+    "changing": "services/redaction/rules.yaml"
+  }
+]

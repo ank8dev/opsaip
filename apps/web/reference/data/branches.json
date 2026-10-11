@@ -1,0 +1,114 @@
+[
+  {
+    "branch": "release/3.2",
+    "person": "p2",
+    "task": "t1",
+    "pr": "#415",
+    "state": "Open",
+    "updated": "2026-10-10T19:30:00Z"
+  },
+  {
+    "branch": "fix/rotate-telephony-key",
+    "person": "p11",
+    "task": "t2",
+    "pr": "#427",
+    "state": "Open",
+    "updated": "2026-10-10T19:50:00Z"
+  },
+  {
+    "branch": "migration/consent-field",
+    "person": "p4",
+    "task": "t3",
+    "pr": "#420",
+    "state": "Open",
+    "updated": "2026-10-10T18:05:00Z"
+  },
+  {
+    "branch": "perf/tts-streaming",
+    "person": "p5",
+    "task": "t4",
+    "pr": "#418",
+    "state": "Open",
+    "updated": "2026-10-10T17:35:00Z"
+  },
+  {
+    "branch": "chore/onnxruntime-gpu",
+    "person": "p6",
+    "task": "t5",
+    "pr": "#426",
+    "state": "Open",
+    "updated": "2026-10-10T16:15:00Z"
+  },
+  {
+    "branch": "fix/barge-in-0421",
+    "person": "p5",
+    "task": "t8",
+    "pr": "#421",
+    "state": "Open",
+    "updated": "2026-10-10T19:41:00Z"
+  },
+  {
+    "branch": "feat/live-call-view",
+    "person": "p1",
+    "task": "t9",
+    "pr": "#412",
+    "state": "Open",
+    "updated": "2026-10-10T19:20:00Z"
+  },
+  {
+    "branch": "feat/gpu-autoscale",
+    "person": "p6",
+    "task": "t11",
+    "pr": "#423",
+    "state": "Open",
+    "updated": "2026-10-10T19:05:00Z"
+  },
+  {
+    "branch": "feat/usage-billing",
+    "person": "p4",
+    "task": "t12",
+    "pr": "#425",
+    "state": "Open",
+    "updated": "2026-10-10T18:40:00Z"
+  },
+  {
+    "branch": "fix/pii-cards",
+    "person": "p11",
+    "task": "t13",
+    "pr": "#424",
+    "state": "Open",
+    "updated": "2026-10-10T19:15:00Z"
+  },
+  {
+    "branch": "feat/onboarding-funnel",
+    "person": "p8",
+    "task": "t15",
+    "pr": "#422",
+    "state": "Open",
+    "updated": "2026-10-10T15:30:00Z"
+  },
+  {
+    "branch": "feat/sdk-v2",
+    "person": "p4",
+    "task": "t17",
+    "pr": "#419",
+    "state": "Open",
+    "updated": "2026-10-10T18:55:00Z"
+  },
+  {
+    "branch": "docs/release-notes-3.2",
+    "person": "p3",
+    "task": "t20",
+    "pr": "#414",
+    "state": "Merged",
+    "updated": "2026-10-10T10:20:00Z"
+  },
+  {
+    "branch": "fix/bt-echo",
+    "person": "p5",
+    "task": "t21",
+    "pr": "#409",
+    "state": "Merged",
+    "updated": "2026-10-10T16:30:00Z"
+  }
+]

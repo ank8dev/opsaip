@@ -1,0 +1,57 @@
+{
+  "team": {
+    "title": "Team (sample)",
+    "description": "Sample team of Tessera, an AI voice-agent startup: 11 people with role, time zone, work hours, current focus and what they are changing.",
+    "file": "data/team.json"
+  },
+  "activity": {
+    "title": "Agent activity (sample)",
+    "description": "Sample tasks at Tessera with status, priority, impact, owner, the agent tool it runs in and when its current status began.",
+    "file": "data/activity.json"
+  },
+  "transcripts": {
+    "title": "Agent chats (sample)",
+    "description": "Sample conversations from Claude Code and Codex at Tessera, one message per row, linked to a task.",
+    "file": "data/transcripts.json"
+  },
+  "mcp": {
+    "title": "MCP connections (sample)",
+    "description": "Sample MCP links at Tessera: 18 Claude Code and Codex agents reporting into the Opsaip MCP server, and the tool servers Opsaip calls, with status and last activity.",
+    "file": "data/mcp.json"
+  },
+  "repo": {
+    "title": "Git repo (sample)",
+    "description": "Sample record for the team's shared Git repository: name, main branch, its protection rule, visibility and last push.",
+    "file": "data/repo.json"
+  },
+  "repo_access": {
+    "title": "Repo access (sample)",
+    "description": "Sample repo roles per teammate, and what their agents are allowed to do in the repo.",
+    "file": "data/repo_access.json"
+  },
+  "branches": {
+    "title": "Branches (sample)",
+    "description": "Sample branches in the repo with owner, linked task, pull request and state.",
+    "file": "data/branches.json"
+  },
+  "members": {
+    "title": "Workspace roles (sample)",
+    "description": "Sample Opsaip role (Admin, Member or Viewer) for each teammate, shown in Settings → Workspace.",
+    "file": "data/members.json"
+  },
+  "channels": {
+    "title": "Slack connection (sample)",
+    "description": "Sample status of the team's Slack connection, the only channel the composer sends messages and announcements through.",
+    "file": "data/channels.json"
+  },
+  "links": {
+    "title": "Linked items (sample)",
+    "description": "Sample Linear issues, GitHub pull requests and Notion pages linked to each task, with their state in that tool, the Opsaip status it maps to, and whether they agree.",
+    "file": "data/links.json"
+  },
+  "status_map": {
+    "title": "Status mapping (sample)",
+    "description": "Sample mapping from each Opsaip status to the matching Linear state, GitHub pull request state and Notion Status option.",
+    "file": "data/status_map.json"
+  }
+}
