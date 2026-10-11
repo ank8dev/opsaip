@@ -1,0 +1,15 @@
+/* The baton floats above the whole dashboard; it never takes clicks.
+   Every layer is a 0×0 box at the grip, so rotations pivot on the hand. */
+.op-baton { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 30; pointer-events: none; }
+.op-baton-layer { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.op-baton-svg { position: absolute; left: -4px; top: -31px; overflow: visible; }
+.op-baton-stick { fill: var(--op-text); transition: fill var(--op-dur-base) var(--op-ease-in-out); }
+
+/* The light at the tip: the logo dot. Muted at rest, signal while agents play, red on failure. */
+.op-baton-light {
+  position: absolute; left: 13.46px; top: -30.45px; width: 7.84px; height: 7.84px; border-radius: 999px;
+  background: var(--op-text-muted);
+  transition: background-color var(--op-dur-base) var(--op-ease-out);
+}
+.op-baton[data-state="live"] .op-baton-light { background: var(--op-signal); }
+.op-baton[data-state="error"] .op-baton-light { background: var(--op-error); }
