@@ -1,0 +1,109 @@
+/* =====================================================================
+   Opsaip design tokens — the single source for colour, type and motion.
+   Dark is the default; <html data-theme="light"> switches the palette.
+   Components only ever read these variables, never raw values.
+   TypeScript reads the motion tokens from here too (src/styles/motion.ts).
+   ===================================================================== */
+
+:root {
+  /* ---- Colour: neutral graphite + lime, the one accent ---- */
+  --op-bg: #0B0B0B;
+  --op-surface: #141414;
+  --op-raised: #1C1C1C;
+  --op-border: #2A2A2A;
+  --op-border-control: #6B6B6B;
+  --op-text: #EDEDED;
+  --op-text-secondary: #A3A3A3;
+  --op-text-muted: #8A8A8A;
+  --op-accent: #C8F03C;
+  --op-accent-hover: #D4F55A;
+  --op-accent-pressed: #B5E01F;
+  --op-on-accent: #0B0B0B;
+  --op-signal: #C8F03C;          /* "live": working agents, presence, the baton's light */
+  --op-focus: #C8F03C;
+  --op-logo-dot: #C8F03C;
+  --op-error: #FF5A4E;           /* the only colour besides lime: errors */
+  --op-side-bg: #0F0F0F;         /* the sidebar: a shade apart from the main area */
+  --op-tray-bg: #1C1C1C;
+  --op-hover: rgba(255, 255, 255, 0.05);
+  --op-track: rgba(255, 255, 255, 0.07);
+  --op-ring-base: #3A3A3A;
+  --op-ring-focus: #7A7A7A;
+  --op-halo: rgba(237, 237, 237, 0.06);
+  --op-beam: rgba(200, 240, 60, 0.35);
+  --op-beam-tip: #C8F03C;
+  --op-glow: #C8F03C;
+  --op-glow-opacity: 0.10;
+  --op-glow-opacity-focus: 0.13;
+  --op-shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.28);
+
+  /* ---- Type ---- */
+  --op-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --op-mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ---- Layout ---- */
+  --op-side-w: 264px;
+
+  /* ---- Motion: "Fluid" — long, glassy, blurred on entry ---- */
+  --op-ease-out: cubic-bezier(0.32, 0.72, 0, 1);      /* things appearing */
+  --op-ease-exit: cubic-bezier(0.32, 0, 0.67, 0);     /* things leaving */
+  --op-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);   /* place or size changes; settles, never overshoots */
+  --op-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* theme and colour changes */
+  --op-ease-baton: cubic-bezier(0.32, 0.72, 0, 1);    /* the conductor's travel */
+  --op-dur-fast: 260ms;   /* hovers, presses, small colour changes */
+  --op-dur-base: 480ms;   /* menus, status changes, every exit */
+  --op-dur-slow: 720ms;   /* windows, panels, trays opening */
+  --op-dur-baton: 720ms;  /* the baton travelling */
+  --op-dist: 24px;        /* how far things travel when they appear */
+  --op-scale-from: 0.96;
+  --op-blur: 8px;         /* blur things start from */
+  --op-stagger: 60ms;     /* delay between list items */
+  --op-enter-step: 90ms;  /* delay between page sections on first load */
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --op-bg: #FAFAFA;
+  --op-surface: #FFFFFF;
+  --op-raised: #F2F2F2;
+  --op-border: #E3E3E3;
+  --op-border-control: #8A8A8A;
+  --op-text: #111111;
+  --op-text-secondary: #525252;
+  --op-text-muted: #6B6B6B;
+  --op-accent: #C8F03C;
+  --op-accent-hover: #B5E01F;
+  --op-accent-pressed: #A3CC14;
+  --op-on-accent: #0B0B0B;
+  --op-signal: #111111;          /* lime on white is 1.2:1, so "live" turns to ink */
+  --op-focus: #111111;
+  --op-logo-dot: #111111;
+  --op-error: #C4302A;
+  --op-side-bg: #F5F5F5;
+  --op-tray-bg: #F2F2F2;
+  --op-hover: rgba(0, 0, 0, 0.045);
+  --op-track: rgba(0, 0, 0, 0.07);
+  --op-ring-base: #D4D4D4;
+  --op-ring-focus: #9A9A9A;
+  --op-halo: rgba(17, 17, 17, 0.05);
+  --op-beam: #C8F03C;
+  --op-beam-tip: #C8F03C;
+  --op-glow: #C8F03C;
+  --op-glow-opacity: 0.6;
+  --op-glow-opacity-focus: 0.8;
+
+  color-scheme: light;
+}
+
+/* Reduced motion: from the OS, or from Settings → Appearance → Motion */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms; --op-dur-baton: 1ms;
+    --op-stagger: 0ms; --op-enter-step: 0ms; --op-blur: 0px;
+  }
+}
+:root[data-motion="reduce"] {
+  --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms; --op-dur-baton: 1ms;
+  --op-stagger: 0ms; --op-enter-step: 0ms; --op-blur: 0px;
+}

@@ -1,0 +1,190 @@
+/* Base: reset, the page, and small shared pieces used across the app.
+   Component-specific styles live next to their components. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--op-bg); color: var(--op-text);
+  font-family: var(--op-sans); font-size: 15px; line-height: 22px;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--op-dur-base) var(--op-ease-in-out), color var(--op-dur-base) var(--op-ease-in-out);
+}
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+.op-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.op-mono { font-family: var(--op-mono); }
+
+/* ---- Counts and empty states ---- */
+.op-home .op-n { font-weight: 500; color: var(--op-text); font-variant-numeric: tabular-nums; }
+.op-empty { padding: 12px; color: var(--op-text-muted); font-size: 13px; line-height: 20px; list-style: none; }
+.op-flag { color: var(--op-error); }
+.op-prio-urgent { color: var(--op-error); font-weight: 500; }
+
+/* ---- Status dots: shape carries the state, not colour ---- */
+.op-dotbox { width: 24px; height: 24px; flex: none; display: flex; align-items: center; justify-content: center; }
+/* Working: a thin ring with a short arc of light running around it */
+.op-dot {
+  position: relative; display: inline-block; flex: none; width: 10px; height: 10px;
+  border-radius: 999px; border: 1.5px solid var(--op-border);
+}
+.op-dot::after {
+  content: ""; position: absolute; inset: -1.5px; border-radius: 999px;
+  border: 1.5px solid transparent; border-top-color: var(--op-signal); border-right-color: var(--op-signal);
+  animation: op-spin 1.1s cubic-bezier(0.5, 0.15, 0.5, 0.85) infinite;
+}
+@keyframes op-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .op-dot::after { animation: none; transform: rotate(45deg); } }
+:root[data-motion="reduce"] .op-dot::after { animation: none; transform: rotate(45deg); }
+.op-dot-needs { display: inline-block; width: 8px; height: 8px; border-radius: 999px; border: 1.5px solid var(--op-text); }
+.op-dot-done { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--op-text-secondary); }
+.op-dot-fail { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--op-error); }
+.op-dot-queued { display: inline-block; width: 8px; height: 8px; border-radius: 999px; border: 1.5px solid var(--op-border-control); }
+.op-dot-live { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--op-signal); }
+
+/* ---- A person: initials, presence dot (filled = in working hours) ---- */
+.op-face {
+  position: relative; width: 24px; height: 24px; flex: none; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--op-surface); border: 1px solid var(--op-border);
+  font-size: 10px; line-height: 1; font-weight: 500; letter-spacing: 0.02em; color: var(--op-text-secondary);
+}
+.op-face::after {
+  content: ""; position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 999px;
+  background: var(--op-side-bg); border: 1.5px solid var(--op-text-muted);
+}
+.op-face[data-on="true"]::after { background: var(--op-signal); border-color: var(--op-side-bg); }
+.op-face-small { width: 20px; height: 20px; font-size: 9px; }
+.op-face-small::after { display: none; }
+
+/* ---- Tag ---- */
+.op-tag {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 8px; max-width: 100%;
+  font-size: 12px; line-height: 16px; border-radius: 999px;
+  background: var(--op-surface); border: 1px solid var(--op-border); color: var(--op-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---- Back button: a round chevron ---- */
+.op-back {
+  width: 24px; height: 24px; padding: 0; margin: 0; border: 0; border-radius: 999px; flex: none;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; background: transparent;
+  transition: background-color var(--op-dur-fast) var(--op-ease-out), color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-home .op-back { color: var(--op-text-secondary); }
+.op-home .op-back:hover { background: var(--op-hover); color: var(--op-text); }
+.op-back:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 0; }
+.op-back span { width: 8px; height: 8px; margin-left: 3px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+
+/* ---- Buttons ---- */
+.op-btn {
+  font-weight: 500; font-size: 13px; height: 30px; padding: 0 16px; border-radius: 999px; border: 1px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--op-accent); color: var(--op-on-accent);
+  transition: background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-home .op-btn { color: var(--op-on-accent); }
+.op-btn:hover { background: var(--op-accent-hover); }
+.op-btn:active { background: var(--op-accent-pressed); }
+.op-btn:disabled { opacity: 0.4; cursor: not-allowed; background: var(--op-accent); }
+.op-btn:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; }
+/* light theme: grey while empty, lime the moment there is something to run */
+:root[data-theme="light"] .op-btn:disabled { opacity: 1; background: var(--op-raised); color: var(--op-text-muted); border-color: var(--op-border); }
+
+.op-sbtn {
+  height: 30px; margin: 0; padding: 0 12px; border-radius: 8px; border: 1px solid var(--op-border); background: transparent; cursor: pointer;
+  font: inherit; font-size: 13px; line-height: 18px; white-space: nowrap;
+  transition: background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-home .op-sbtn { color: var(--op-text); }
+.op-sbtn:hover { background: var(--op-hover); }
+.op-sbtn:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; }
+.op-home .op-sbtn-danger { color: var(--op-error); border-color: var(--op-error); }
+.op-home .op-sbtn.op-sbtn-primary { background: var(--op-accent); border-color: transparent; color: var(--op-on-accent); font-weight: 500; }
+.op-home .op-sbtn.op-sbtn-primary:hover { background: var(--op-accent-hover); }
+
+/* ---- Facts: a label and a value on one line ---- */
+.op-fact { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 8px; font-size: 12px; line-height: 20px; }
+.op-fact-k { font-weight: 500; letter-spacing: 0.02em; color: var(--op-text-muted); }
+.op-fact-v { color: var(--op-text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- A small task row inside expanded details ---- */
+.op-mini {
+  text-align: left; width: 100%; margin: 0;
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; align-items: center;
+  min-height: 28px; padding: 4px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+  transition: background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-mini:hover { background: var(--op-hover); }
+.op-mini:focus-visible { outline: 2px solid var(--op-focus); outline-offset: -2px; }
+.op-mini .op-dotbox { width: 16px; height: 16px; }
+.op-mini-title { font-size: 12px; line-height: 20px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-mini-status { font-size: 12px; line-height: 20px; color: var(--op-text-secondary); white-space: nowrap; }
+.op-mini.op-fail .op-mini-status { color: var(--op-error); }
+
+/* ---- Picker: a native <select> that opens our own listbox ---- */
+.op-pickwrap { position: relative; display: inline-flex; max-width: 100%; }
+.op-pickwrap::after {
+  content: ""; position: absolute; right: 9px; top: 50%; width: 5px; height: 5px; margin-top: -4px;
+  border-right: 1.5px solid var(--op-text-muted); border-bottom: 1.5px solid var(--op-text-muted);
+  transform: rotate(45deg); pointer-events: none;
+  transition: transform var(--op-dur-base) var(--op-ease-spring), margin var(--op-dur-base) var(--op-ease-spring);
+}
+.op-pickwrap[data-open="true"]::after { transform: rotate(225deg); margin-top: -1px; }
+.op-pick {
+  appearance: none; -webkit-appearance: none; font: inherit; font-size: 13px; line-height: 20px; height: 26px; max-width: 220px;
+  margin: 0; padding: 0 24px 0 8px; border: 1px solid transparent; border-radius: 8px; background: var(--op-hover); color: var(--op-text);
+  cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.op-pick:hover { border-color: var(--op-border); }
+.op-pick:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 1px; }
+.op-pick[aria-expanded="true"] { border-color: var(--op-border); background: var(--op-hover); }
+.op-pick option { background: var(--op-surface); color: var(--op-text); }
+
+.op-lb {
+  position: fixed; z-index: 60; min-width: 220px; max-width: min(340px, calc(100vw - 16px));
+  padding: 4px; border-radius: 12px; border: 1px solid var(--op-border); background: var(--op-surface);
+  box-shadow: var(--op-shadow-pop);
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; outline: none;
+}
+.op-lb::-webkit-scrollbar { display: none; }
+.op-lb-opt {
+  display: grid; grid-template-columns: minmax(0, 1fr) 12px; column-gap: 10px; align-items: center;
+  min-height: 32px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; line-height: 18px; color: var(--op-text);
+  transition: background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-lb-opt.op-lb-face { grid-template-columns: 24px minmax(0, 1fr) 12px; }
+.op-lb-opt[data-active="true"] { background: var(--op-hover); }
+.op-lb-opt[aria-disabled="true"] { color: var(--op-text-muted); cursor: default; }
+.op-lb-txt { min-width: 0; display: flex; flex-direction: column; }
+.op-lb-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-lb-two .op-lb-t { font-weight: 500; }
+.op-lb-d { font-size: 12px; line-height: 16px; color: var(--op-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-check { width: 9px; height: 5px; margin-top: -3px; border-left: 1.5px solid var(--op-text); border-bottom: 1.5px solid var(--op-text); transform: rotate(-45deg); opacity: 0; }
+.op-lb-opt[aria-selected="true"] .op-check { opacity: 1; }
+.op-lb .op-face::after { background: var(--op-surface); }
+.op-lb .op-face[data-on="true"]::after { background: var(--op-signal); border-color: var(--op-surface); }
+
+/* ---- Switch (on/off) ---- */
+.op-switch {
+  position: relative; flex: none; width: 34px; height: 20px; margin: 0; padding: 0; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--op-border-control); transition: background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px;
+  background: var(--op-surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform var(--op-dur-base) var(--op-ease-spring), background-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-switch[aria-checked="true"] { background: var(--op-accent); }
+.op-switch[aria-checked="true"]::after { transform: translateX(14px); background: var(--op-on-accent); }
+.op-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+.op-switch:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; }
+
+/* ---- Text field ---- */
+.op-field {
+  font: inherit; font-size: 13px; line-height: 20px; height: 30px; width: 220px; max-width: 100%; margin: 0; padding: 0 10px;
+  border-radius: 8px; border: 1px solid var(--op-border); background: var(--op-bg); color: var(--op-text);
+  transition: border-color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-field:focus { outline: none; border-color: var(--op-focus); }
+.op-field.op-mono { font-family: var(--op-mono); font-size: 12px; }
