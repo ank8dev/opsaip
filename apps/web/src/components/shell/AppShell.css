@@ -1,0 +1,36 @@
+/* The app: sidebar on the left, the main column on the right, the whole window tall. */
+.op-home {
+  position: relative;
+  display: grid; grid-template-columns: var(--op-side-w) minmax(0, 1fr);
+  height: 100dvh; min-height: 480px; overflow: hidden;
+  background: var(--op-bg); color: var(--op-text);
+  transition: background-color var(--op-dur-base) var(--op-ease-in-out), color var(--op-dur-base) var(--op-ease-in-out);
+}
+
+/* Top-right corner buttons: theme, and settings on narrow screens */
+.op-corner-btn {
+  position: absolute; top: 12px; z-index: 25;
+  width: 32px; height: 32px; padding: 0; margin: 0; border: 0; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; background: transparent;
+  transition: background-color var(--op-dur-fast) var(--op-ease-out), color var(--op-dur-fast) var(--op-ease-out);
+}
+.op-home .op-corner-btn { color: var(--op-text-secondary); }
+.op-home .op-corner-btn:hover, .op-home .op-corner-btn[aria-expanded="true"] { color: var(--op-text); background: var(--op-hover); }
+.op-corner-btn:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 0; }
+.op-theme-btn { right: 12px; }
+.op-gear-btn { right: 48px; display: none; }
+.op-gear-btn svg { width: 16px; height: 16px; }
+
+/* The theme icon: a half-filled circle that turns over */
+.op-theme-ico {
+  position: relative; width: 14px; height: 14px; border-radius: 999px; border: 1.5px solid currentColor; overflow: hidden;
+  transition: transform var(--op-dur-slow) var(--op-ease-spring);
+}
+.op-theme-ico::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 50%; background: currentColor; }
+:root[data-theme="light"] .op-theme-ico { transform: rotate(180deg); }
+
+/* Narrow screens: sidebar on top, one column */
+@media (max-width: 860px) {
+  .op-home { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42%) minmax(0, 1fr); }
+  .op-gear-btn { display: flex; }
+}
