@@ -127,9 +127,9 @@ button { font: inherit; color: inherit; }
   content: ""; position: absolute; right: 9px; top: 50%; width: 5px; height: 5px; margin-top: -4px;
   border-right: 1.5px solid var(--op-text-muted); border-bottom: 1.5px solid var(--op-text-muted);
   transform: rotate(45deg); pointer-events: none;
-  transition: transform var(--op-dur-base) var(--op-ease-spring), margin var(--op-dur-base) var(--op-ease-spring);
+  transition: transform var(--op-dur-base) var(--op-ease-spring);
 }
-.op-pickwrap[data-open="true"]::after { transform: rotate(225deg); margin-top: -1px; }
+.op-pickwrap[data-open="true"]::after { transform: translateY(3px) rotate(225deg); }
 .op-pick {
   appearance: none; -webkit-appearance: none; font: inherit; font-size: 13px; line-height: 20px; height: 26px; max-width: 220px;
   margin: 0; padding: 0 24px 0 8px; border: 1px solid transparent; border-radius: 8px; background: var(--op-hover); color: var(--op-text);
