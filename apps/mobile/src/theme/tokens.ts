@@ -116,9 +116,17 @@ export const motion = {
 /** Every animation names its size; the size sets the duration. */
 export type MotionSize = 'small' | 'medium' | 'large';
 
+/** The timing curves as cubic-bezier control points, for the web (CSS / Web Animations). */
+export const curve = {
+  out: [0.32, 0.72, 0, 1],    // things appearing
+  exit: [0.32, 0, 0.67, 0],   // things leaving
+  spring: [0.32, 0.72, 0, 1], // place or size changes; settles, never overshoots
+  inOut: [0.65, 0, 0.35, 1],  // colour changes
+} as const;
+
 export const ease = {
-  out: Easing.bezier(0.32, 0.72, 0, 1),    // things appearing
-  exit: Easing.bezier(0.32, 0, 0.67, 0),   // things leaving
-  spring: Easing.bezier(0.32, 0.72, 0, 1), // place or size changes; settles, never overshoots
-  inOut: Easing.bezier(0.65, 0, 0.35, 1),  // colour changes
+  out: Easing.bezier(...curve.out),
+  exit: Easing.bezier(...curve.exit),
+  spring: Easing.bezier(...curve.spring),
+  inOut: Easing.bezier(...curve.inOut),
 };

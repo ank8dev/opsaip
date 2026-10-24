@@ -15,54 +15,18 @@
 //              no scale, no blur
 //
 // All of it runs on the UI thread (Reanimated worklets and layout animations).
+// The web runs the same numbers through the browser instead: see motion.web.tsx.
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import Animated, { LinearTransition, useAnimatedProps, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming, type EntryExitAnimationFunction } from 'react-native-reanimated';
+import Animated, { LinearTransition, useAnimatedProps, useSharedValue, withDelay, withSpring, withTiming, type EntryExitAnimationFunction } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import { duration, exitDuration, fade, spring, type M } from './motionBase';
 import { ease, motion, type MotionSize } from './tokens';
 import { useMotion, usePalette } from './theme';
 
-type M = ReturnType<typeof useMotion>;
-
-export const duration = (size: MotionSize) => (size === 'small' ? motion.fast : size === 'medium' ? motion.base : motion.slow);
-export const exitDuration = (size: MotionSize) => Math.round(duration(size) * motion.exitRatio);
-
-/** A spring that takes about `ms` and settles without overshoot. */
-export const spring = (ms: number) => ({ duration: ms, dampingRatio: 1 });
-
-/** Fades and colour changes: a timing curve. */
-export const fade = (ms: number) => ({ duration: ms, easing: ease.out });
-
-// ---- Animating a value (worklet-safe) ----
-
-/** Move a value you touched or that changed place: a spring of the given size. */
-export function springTo(v: number, size: MotionSize = 'medium') {
-  'worklet';
-  return withSpring(v, spring(duration(size)));
-}
-
-/** Fade a value (opacity, colour progress): a timing curve of the given size. */
-export function fadeTo(v: number, size: MotionSize = 'small') {
-  'worklet';
-  return withTiming(v, fade(duration(size)));
-}
-
-/** Ambient loops: the rhythm of things that wait or work, not of things you did. */
-export const AMBIENT = {
-  breathe: 900, // the brief's skeleton while Opsaip writes
-  typing: 420,  // the three dots
-  spin: 1100,   // the working ring
-  listen: 700,  // the mic ring while "listening"
-} as const;
-
-/** Breathe between two values forever. Reduced motion: hold the upper value. */
-export function pulse(lo: number, hi: number, ms: number, reduced: boolean) {
-  'worklet';
-  if (reduced) return withTiming(hi, { duration: 1 });
-  return withRepeat(withSequence(withTiming(hi, { duration: ms, easing: ease.inOut }), withTiming(lo, { duration: ms, easing: ease.inOut })), -1, false);
-}
+export * from './motionBase';
 
 // ---- Enter and exit ----
 
