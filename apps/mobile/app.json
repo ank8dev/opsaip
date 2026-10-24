@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Opsaip",
+    "slug": "opsaip",
+    "scheme": "opsaip",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0B0B0B",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "dev.opsaip.mobile"
+    },
+    "android": {
+      "package": "dev.opsaip.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0B0B",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
+          "backgroundColor": "#0B0B0B",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B0B0B"
+          }
+        }
+      ],
+      "expo-localization"
+    ]
+  }
+}
