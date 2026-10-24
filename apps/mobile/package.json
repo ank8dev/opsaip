@@ -42,7 +42,8 @@
     "ios": "expo start --ios",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "check:web-motion": "expo export -p web && node scripts/check-web-motion.mjs"
   },
   "private": true,
   "license": "AGPL-3.0-only"
