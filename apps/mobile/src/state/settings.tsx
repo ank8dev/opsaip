@@ -3,6 +3,7 @@
 // memory like the rest of the app.
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import type { Mode } from '../data/types';
 import { clock, nextAt } from '../lib/time';
 import { setHaptics } from '../lib/haptics';
@@ -91,6 +92,18 @@ const SettingsContext = createContext<Ctx | null>(null);
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState(DEFAULTS);
   useEffect(() => setHaptics(settings.haptics), [settings.haptics]);
+
+  // The web build embedded in the landing page follows its theme switch (same origin only).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || window.parent === window) return;
+    const on = (e: MessageEvent) => {
+      if (e.origin !== location.origin || e.data?.type !== 'opsaip:theme') return;
+      if (e.data.theme === 'light' || e.data.theme === 'dark') setSettings((s) => ({ ...s, appearance: e.data.theme }));
+    };
+    window.addEventListener('message', on);
+    window.parent.postMessage({ type: 'opsaip:ready' }, location.origin);
+    return () => window.removeEventListener('message', on);
+  }, []);
   const value = useMemo<Ctx>(
     () => ({
       settings,

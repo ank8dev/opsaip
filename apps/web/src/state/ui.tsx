@@ -74,6 +74,19 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const systemReduce = useMediaQuery('(prefers-reduced-motion: reduce)');
   const theme = themeChoice === 'system' ? (systemLight ? 'light' : 'dark') : themeChoice;
 
+  // Embedded in the landing page: follow its theme switch. Same origin only, and not
+  // remembered, so the app's own choice is untouched outside the landing.
+  useEffect(() => {
+    if (window.parent === window) return;
+    const on = (e: MessageEvent) => {
+      if (e.origin !== location.origin || e.data?.type !== 'opsaip:theme') return;
+      if (e.data.theme === 'light' || e.data.theme === 'dark') setThemeChoiceState(e.data.theme);
+    };
+    window.addEventListener('message', on);
+    window.parent.postMessage({ type: 'opsaip:ready' }, location.origin);
+    return () => window.removeEventListener('message', on);
+  }, []);
+
   // Theme and motion live on <html>, so tokens.css applies them everywhere,
   // including menus rendered outside the app shell.
   const [motion, setMotion] = useState<MotionTokens>(readMotionTokens);
