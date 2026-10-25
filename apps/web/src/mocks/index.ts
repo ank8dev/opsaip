@@ -17,10 +17,18 @@ import members from './members.json';
 import channels from './channels.json';
 import links from './links.json';
 import statusMap from './status_map.json';
+import { clients, installs, kit, newcomers } from './connections';
+import { memories, sessions } from './memory';
 
 export const mockWorkspace: Workspace = {
   team: team as Person[],
   activity: activity as Task[],
+  clients,
+  kit,
+  installs,
+  newcomers,
+  memories,
+  sessions,
   transcripts: transcripts as TranscriptMessage[],
   mcp: mcp as McpConnection[],
   repo: (repo as Repo[])[0] ?? null,

@@ -2,10 +2,10 @@
 // writes a short brief, asks where to start, and hands you one decision at a time.
 // Then it goes quiet until something needs you.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Keyboard, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import type { Bucket, ThreadItem } from '../../data/types';
 import { inStream, useRunning, useStore } from '../../state/store';
 import { T, useMotion, usePalette } from '../../theme/theme';
@@ -51,6 +51,16 @@ export default function ThreadScreen() {
     const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(t);
   }, [count, typing, ws.id, done]);
+
+  // Back from a screen the tour opened: its next step waits at the end of the thread.
+  const touring = state.tour.seen.length > 0;
+  useFocusEffect(
+    useCallback(() => {
+      if (!touring) return;
+      const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: false }), 60);
+      return () => clearTimeout(t);
+    }, [touring]),
+  );
 
   useEffect(() => {
     const sub = Keyboard.addListener('keyboardWillShow', () => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 60));

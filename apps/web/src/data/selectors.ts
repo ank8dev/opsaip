@@ -1,7 +1,7 @@
 // Pure functions over workspace data: sorting, counting, time. No React here,
 // so they are easy to test and could move to the server unchanged.
 
-import type { AnyTask, McpConnection, Person, Priority, StatusMapRow, Task, TaskStatus, Workspace } from '../types';
+import type { AgentClient, AnyTask, Install, KitItem, McpConnection, Person, Priority, StatusMapRow, Task, TaskStatus, Workspace } from '../types';
 
 // ---- Order and importance ----
 
@@ -106,4 +106,62 @@ export function waitingFor(t: AnyTask, now = Date.now()): string {
 export function greeting(now = new Date()): string {
   const h = now.getHours();
   return h < 5 ? 'Good evening.' : h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.';
+}
+
+// ---- the team kit: who runs which agent client and what their agents can reach ----
+
+const LIVE_MIN = 15;   // a plugin seen this recently counts as live
+const STALE_MIN = 1440;
+
+/** How fresh a "last seen" is: live (a plugin, within 15 min), recent, or stale (over a day, or never). */
+export function freshness(iso: string | undefined, source?: AgentClient['source'], now = Date.now()): 'live' | 'recent' | 'stale' {
+  const m = (now - Date.parse(iso ?? '')) / 60000;
+  if (Number.isNaN(m) || m > STALE_MIN) return 'stale';
+  return source === 'plugin' && m <= LIVE_MIN ? 'live' : 'recent';
+}
+
+/** "last seen 5m ago", "last seen just now", "never seen" */
+export function lastSeen(iso: string | undefined, now = Date.now()): string {
+  const a = iso ? ago(iso, now) : '';
+  return a ? `last seen ${a === 'now' ? 'just now' : a}` : 'never seen';
+}
+
+/** One cell of the kit matrix: a teammate and a kit item, and where Opsaip last saw it. */
+export interface KitCell {
+  item: KitItem;
+  client?: AgentClient;
+  install?: Install;
+  seen?: string;
+  source?: AgentClient['source'];
+}
+
+export function kitCell(ws: Workspace, personId: string, item: KitItem): KitCell {
+  if (item.kind === 'agent') {
+    const client = ws.clients.find((c) => c.person === personId && c.name === item.name);
+    return { item, client, seen: client?.last_seen, source: client?.source };
+  }
+  const install = ws.installs.find((i) => i.person === personId && i.item === item.id);
+  const client = install ? ws.clients.find((c) => c.id === install.client) : undefined;
+  return { item, client, install, seen: install?.last_seen, source: client?.source };
+}
+
+/** The kit items a teammate's agents have never reported. */
+export function missingFromKit(ws: Workspace, personId: string): KitItem[] {
+  return ws.kit.filter((k) => k.in_kit && !kitCell(ws, personId, k).seen);
+}
+
+/** Everyone missing something from the kit, most missing first. */
+export function kitDrift(ws: Workspace): { person: Person; missing: KitItem[] }[] {
+  return ws.team
+    .map((person) => ({ person, missing: missingFromKit(ws, person.id) }))
+    .filter((d) => d.missing.length)
+    .sort((a, b) => b.missing.length - a.missing.length);
+}
+
+/** "Linear MCP", "Linear MCP and GitHub MCP", "Linear MCP, GitHub MCP and Sentry MCP", "A, B and 3 more" */
+export function listNames(items: { name: string }[], max = 3): string {
+  const n = items.map((i) => i.name);
+  if (n.length <= 1) return n.join('');
+  if (n.length <= max) return `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+  return `${n.slice(0, max - 1).join(', ')} and ${n.length - max + 1} more`;
 }
