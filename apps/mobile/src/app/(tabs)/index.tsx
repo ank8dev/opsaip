@@ -2,10 +2,10 @@
 // writes a short brief, asks where to start, and hands you one decision at a time.
 // Then it goes quiet until something needs you.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Keyboard, Pressable, ScrollView, View, type ScrollViewInstance } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import type { Bucket, ThreadItem } from '../../data/types';
 import { inStream, useRunning, useStore } from '../../state/store';
 import { T, useMotion, usePalette } from '../../theme/theme';
@@ -17,7 +17,7 @@ import { Baton } from '../../components/Baton';
 import { GearIcon } from '../../components/Icons';
 import { Brief } from '../../components/thread/Brief';
 import { Queue } from '../../components/thread/Queue';
-import { AgentMessage, AskMessage, Elsewhere, RunCard, Typing, UserMessage } from '../../components/thread/Cards';
+import { AgentMessage, AskMessage, Elsewhere, GuideMessage, RunCard, Typing, UserMessage } from '../../components/thread/Cards';
 
 export default function ThreadScreen() {
   const p = usePalette();
@@ -51,6 +51,16 @@ export default function ThreadScreen() {
     const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(t);
   }, [count, typing, ws.id, done]);
+
+  // Back from a screen the tour opened: its next step waits at the end of the thread.
+  const touring = state.tour.seen.length > 0;
+  useFocusEffect(
+    useCallback(() => {
+      if (!touring) return;
+      const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: false }), 60);
+      return () => clearTimeout(t);
+    }, [touring]),
+  );
 
   useEffect(() => {
     const sub = Keyboard.addListener('keyboardWillShow', () => setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 60));
@@ -126,6 +136,7 @@ function Row({ item, onOpen }: { item: ThreadItem; onOpen: (bucket: Bucket) => v
   switch (item.kind) {
     case 'brief': return <Brief at={item.at} onOpen={onOpen} />;
     case 'ask': return <AskMessage item={item} />;
+    case 'guide': return <GuideMessage item={item} />;
     case 'queue': return <Queue />;
     case 'elsewhere': return <Elsewhere item={item} />;
     case 'agent': return <AgentMessage text={item.text} />;
@@ -135,7 +146,7 @@ function Row({ item, onOpen }: { item: ThreadItem; onOpen: (bucket: Bucket) => v
   }
 }
 
-const radiusOf = (item: ThreadItem) => (item.kind === 'brief' ? radius.xl + 4 : item.kind === 'agent' || item.kind === 'ask' || item.kind === 'queue' ? 0 : radius.lg);
+const radiusOf = (item: ThreadItem) => (item.kind === 'brief' ? radius.xl + 4 : item.kind === 'agent' || item.kind === 'ask' || item.kind === 'guide' || item.kind === 'queue' ? 0 : radius.lg);
 
 /** The agent's name in the header, with the baton as its face and what it is doing now. */
 function AgentTitle() {

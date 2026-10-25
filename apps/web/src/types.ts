@@ -128,9 +128,68 @@ export interface StatusMapRow {
   notion: string;
 }
 
+/** An agent client a teammate runs (Claude Code, Codex…), as Opsaip last heard from it. */
+export interface AgentClient {
+  id: string;
+  person: string;
+  name: string;
+  /** "plugin": the Opsaip plugin reports every step; "mcp": the agent calls Opsaip's MCP tools. */
+  source: 'plugin' | 'mcp';
+  last_seen: string; // ISO time
+}
+
+/** One item of the team kit: an agent, a connector or a skill every teammate should have. */
+export interface KitItem {
+  id: string;
+  name: string;
+  kind: 'agent' | 'connector' | 'skill';
+  in_kit: boolean;
+}
+
+/** A kit connector or skill installed in one teammate's agent client. */
+export interface Install {
+  person: string;
+  item: string;   // KitItem id
+  client: string; // AgentClient id
+  last_seen: string;
+}
+
+/** Someone who joined recently: the kit drift check looks at them first. */
+export interface Newcomer {
+  person: string;
+  joined: string;
+}
+
+/** A fact agents learned and keep: shared with the team (project) or only yours (personal). */
+export interface Memory {
+  id: string;
+  scope: 'project' | 'personal';
+  author: string; // person id, or "me"
+  created: string;
+  reviewed: boolean;
+  fact: string;
+  source: { agent: string; session: string };
+}
+
+/** An agent session and the memories it started with. */
+export interface MemorySession {
+  id: string;
+  person: string;
+  agent: string;
+  title: string;
+  started: string;
+  memories: string[]; // Memory ids
+}
+
 export interface Workspace {
   team: Person[];
   activity: Task[];
+  clients: AgentClient[];
+  kit: KitItem[];
+  installs: Install[];
+  newcomers: Newcomer[];
+  memories: Memory[];
+  sessions: MemorySession[];
   transcripts: TranscriptMessage[];
   mcp: McpConnection[];
   repo: Repo | null;
