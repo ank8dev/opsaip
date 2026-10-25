@@ -17,7 +17,7 @@ import { Baton } from '../../components/Baton';
 import { GearIcon } from '../../components/Icons';
 import { Brief } from '../../components/thread/Brief';
 import { Queue } from '../../components/thread/Queue';
-import { AgentMessage, AskMessage, Elsewhere, RunCard, Typing, UserMessage } from '../../components/thread/Cards';
+import { AgentMessage, AskMessage, Elsewhere, GuideMessage, RunCard, Typing, UserMessage } from '../../components/thread/Cards';
 
 export default function ThreadScreen() {
   const p = usePalette();
@@ -126,6 +126,7 @@ function Row({ item, onOpen }: { item: ThreadItem; onOpen: (bucket: Bucket) => v
   switch (item.kind) {
     case 'brief': return <Brief at={item.at} onOpen={onOpen} />;
     case 'ask': return <AskMessage item={item} />;
+    case 'guide': return <GuideMessage item={item} />;
     case 'queue': return <Queue />;
     case 'elsewhere': return <Elsewhere item={item} />;
     case 'agent': return <AgentMessage text={item.text} />;
@@ -135,7 +136,7 @@ function Row({ item, onOpen }: { item: ThreadItem; onOpen: (bucket: Bucket) => v
   }
 }
 
-const radiusOf = (item: ThreadItem) => (item.kind === 'brief' ? radius.xl + 4 : item.kind === 'agent' || item.kind === 'ask' || item.kind === 'queue' ? 0 : radius.lg);
+const radiusOf = (item: ThreadItem) => (item.kind === 'brief' ? radius.xl + 4 : item.kind === 'agent' || item.kind === 'ask' || item.kind === 'guide' || item.kind === 'queue' ? 0 : radius.lg);
 
 /** The agent's name in the header, with the baton as its face and what it is doing now. */
 function AgentTitle() {

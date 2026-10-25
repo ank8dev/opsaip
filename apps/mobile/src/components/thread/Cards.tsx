@@ -31,6 +31,18 @@ export function AskMessage({ item }: { item: Of<'ask'> }) {
   );
 }
 
+// ---- A step of the landing page's guided tour ----
+
+export function GuideMessage({ item }: { item: Of<'guide'> }) {
+  const { pickGuide } = useStore();
+  return (
+    <View style={{ gap: 12, paddingRight: 28 }}>
+      <T v="body">{item.text}</T>
+      {item.options.length ? <Replies options={item.options} picked={item.answer} onPick={(o) => pickGuide(item.id, o)} /> : null}
+    </View>
+  );
+}
+
 // ---- From your personal space: a word about a team workspace ----
 
 export function Elsewhere({ item }: { item: Of<'elsewhere'> }) {

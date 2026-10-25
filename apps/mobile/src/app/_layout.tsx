@@ -13,6 +13,7 @@ import { ThemeRoot, usePalette } from '../theme/theme';
 import { StoreProvider, useStore } from '../state/store';
 import { font } from '../theme/tokens';
 import { SignedOut } from '../components/SignedOut';
+import { TourTip } from '../components/TourTip';
 import { SettingsProvider, useSettings } from '../state/settings';
 import { hasLiquidGlass, useGlassMode } from '../components/Glass';
 
@@ -107,6 +108,7 @@ function Navigation() {
         <Stack.Screen name="prefs/connectors" options={{ ...page, title: 'Connectors' }} />
         <Stack.Screen name="prefs/memory" options={{ ...page, title: 'My memory' }} />
       </Stack>
+      <TourTip />
       {signedOut ? <SignedOut /> : null}
     </ThemeProvider>
   );

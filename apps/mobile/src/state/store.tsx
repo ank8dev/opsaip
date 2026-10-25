@@ -3,6 +3,7 @@
 // lives in memory, nothing is sent anywhere.
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { router } from 'expo-router';
 import type { Attachment, Bucket, Decision, ItemState, MobileWorkspace, Mode, Recipient, ThreadItem } from '../data/types';
 import { BUCKETS, isDecision } from '../data/types';
 import { DEFAULT_WORKSPACE, workspaces } from '../mocks/workspaces';
@@ -10,6 +11,7 @@ import { liveEvents, seedThread } from '../mocks/threads';
 import { afterAnswer, plan, type Beat } from '../lib/agent';
 import { NEEDS_PICK, defaultRecipient } from '../lib/compose';
 import { haptic } from '../lib/haptics';
+import { BRANCHES, END, ENOUGH, FREE, HELLO, LOOK_AROUND, NEXT, SKIP, TOUR_MESSAGE, branchByLabel, embedded, nextOptions, startsTour, type BranchId } from '../lib/tour';
 import { useSettings, type Snooze } from './settings';
 
 const WRITE_FIRST = 1100; // "writing your brief…" before the first item
@@ -35,6 +37,17 @@ export interface Composer {
 
 const COMPOSER: Composer = { mode: 'agent', to: { kind: 'opsaip' }, attachments: [] };
 
+/** The landing page's guided tour: which branches you have seen, the hint on the screen it took
+ *  you to, and what it waits for before it goes on. */
+export interface Tour {
+  seen: BranchId[];
+  tip: string | null;
+  waiting: { kind: 'decision' | 'run'; branch: BranchId } | null;
+}
+
+const TOUR: Tour = { seen: [], tip: null, waiting: null };
+let guides = 0; // ids for the tour's lines
+
 /** A reminder, wherever it lives. */
 export interface Reminder {
   wsId: string;
@@ -56,6 +69,7 @@ interface State {
   focusTick: number;      // bumps when something asks the composer to focus
   cueTick: number;        // bumps when the agent speaks up; the baton reacts
   unread: Record<string, number>;
+  tour: Tour;
 }
 
 type Action =
@@ -71,7 +85,8 @@ type Action =
   | { type: 'session'; out: boolean; wsId?: string }
   | { type: 'typing'; id: string | null }
   | { type: 'draft'; text: string }
-  | { type: 'focus'; text?: string };
+  | { type: 'focus'; text?: string }
+  | { type: 'tour'; t: Partial<Tour> };
 
 const rank = (b: Bucket) => BUCKETS.indexOf(b);
 
@@ -154,6 +169,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, draft: a.text };
     case 'focus':
       return { ...s, draft: a.text ?? s.draft, focusTick: s.focusTick + 1 };
+    case 'tour':
+      return { ...s, tour: { ...s.tour, ...a.t } };
   }
 }
 
@@ -168,10 +185,12 @@ function init(): State {
     composer: COMPOSER,
     signedOut: false,
     typing: null,
-    draft: '',
+    // on the landing page, the composer opens with the tour's first message typed in
+    draft: embedded() ? TOUR_MESSAGE : '',
     focusTick: 0,
     cueTick: 0,
     unread: {},
+    tour: TOUR,
   };
 }
 
@@ -222,6 +241,10 @@ interface Store {
   send: (text: string) => void;
   setDraft: (text: string) => void;
   focusComposer: (text?: string) => void;
+  /** A quick reply to one of the tour's steps. */
+  pickGuide: (itemId: string, option: string) => void;
+  /** Leave the tour's hint and go back to the thread. */
+  backToTour: () => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -319,6 +342,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'queue', id, q: { stage, open: firstIn(id, bucket), asking: null, paused: false } });
     };
 
+    // ---- the guided tour ----
+    const guide = (text: string, options: string[]): ThreadItem => ({ kind: 'guide', id: `g-${Date.now().toString(36)}-${(guides++).toString(36)}`, at: Date.now(), text, options });
+    const line = (text: string): ThreadItem => ({ kind: 'agent', id: `t-${Date.now().toString(36)}-${(guides++).toString(36)}`, at: Date.now(), text });
+    /** After a branch: what it showed, then where next — or the end, once every branch is seen. */
+    const goOn = (branch: BranchId) => {
+      const t = latest.current.tour;
+      if (t.waiting && t.waiting.branch !== branch) return;
+      dispatch({ type: 'tour', t: { waiting: null } });
+      const b = BRANCHES.find((x) => x.id === branch);
+      const left = nextOptions(t.seen);
+      const said = b ? `${b.after} ` : '';
+      say(cur(), [left.length > 1 ? guide(`${said}${NEXT[t.seen.length % NEXT.length]}`, left) : line(`${said}${END}`)]);
+    };
+    /** Something the tour was waiting for happened. */
+    const waited = (kind: 'decision' | 'run') => {
+      const w = latest.current.tour.waiting;
+      if (w?.kind === kind) later(900, () => goOn(w.branch));
+    };
+
     return {
       state,
       ws,
@@ -375,6 +417,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       decide: (itemId, next) => {
         dispatch({ type: 'resolve', id: cur(), itemId, patch: { state: next, decidedAt: Date.now() } as Partial<ThreadItem> });
+        waited('decision');
       },
 
       answer: (itemId, option) => {
@@ -382,6 +425,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (item?.kind !== 'question') return;
         haptic.select();
         dispatch({ type: 'resolve', id: cur(), itemId, patch: { answer: option, state: 'approved', decidedAt: Date.now() } as Partial<ThreadItem> });
+        waited('decision');
       },
 
       notNow: (itemId) => {
@@ -393,6 +437,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         haptic.success();
         const patch = snooze === 'drop' ? { state: 'dropped' } : { state: 'later', remindAt: snooze.at() };
         dispatch({ type: 'resolve', id: cur(), itemId, patch: patch as Partial<ThreadItem> });
+        waited('decision');
       },
 
       keepAsking: () => dispatch({ type: 'queue', id: cur(), q: { asking: null } }),
@@ -446,11 +491,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         dispatch({ type: 'draft', text: '' });
         dispatch({ type: 'composer', c: { attachments: [] } });
+        if (embedded() && startsTour(t)) {
+          dispatch({ type: 'tour', t: { ...TOUR } });
+          say(id, [guide(HELLO, [...BRANCHES.map((b) => b.label), LOOK_AROUND])]);
+          return;
+        }
         const p = plan(t, c.mode, c.to, w, sorted(items(id)), c.attachments);
         say(id, p.items, () => {
           const runId = p.runId;
           if (!runId) return;
           for (const beat of p.beats) later(beat.ms, () => dispatch({ type: 'beat', id, itemId: runId, beat }));
+          // the tour's "hand off a task" goes on once the run is done
+          const w = latest.current.tour.waiting;
+          if (w?.kind === 'run') later(Math.max(0, ...p.beats.map((b) => b.ms)) + 600, () => waited('run'));
         });
       },
 
@@ -471,6 +524,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       setDraft: (text) => dispatch({ type: 'draft', text }),
       focusComposer: (text) => dispatch({ type: 'focus', text }),
+
+      pickGuide: (itemId, option) => {
+        const id = cur();
+        const g = find(itemId);
+        if (g?.kind !== 'guide' || g.answer) return;
+        haptic.select();
+        dispatch({ type: 'patch', id, itemId, patch: { answer: option } as Partial<ThreadItem> });
+        if (option === LOOK_AROUND) return say(id, [line(FREE)]);
+        if (option === ENOUGH) return say(id, [line(END)]);
+        if (option === SKIP) {
+          const w = latest.current.tour.waiting;
+          if (w) goOn(w.branch);
+          return;
+        }
+        const b = branchByLabel(option);
+        if (!b) return;
+        const seen = [...latest.current.tour.seen, b.id];
+        dispatch({ type: 'tour', t: { seen, waiting: b.wait === 'none' ? null : { kind: b.wait, branch: b.id } } });
+        say(id, [guide(b.say, b.wait === 'none' ? [] : [SKIP])], () => {
+          if (b.id === 'needs') goTo('now');
+          if (b.draft) dispatch({ type: 'focus', text: b.draft });
+          if (b.go) {
+            const go = b.go;
+            // the next step is waiting in the thread when you come back
+            later(700, () => {
+              dispatch({ type: 'tour', t: { tip: b.tip ?? null } });
+              router.navigate(go as never);
+              later(600, () => goOn(b.id));
+            });
+          }
+        });
+      },
+      backToTour: () => {
+        dispatch({ type: 'tour', t: { tip: null } });
+        router.navigate('/' as never);
+      },
     };
   }, [state, ws, spaces, all, shown, say, later, reminders]);
 

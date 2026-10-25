@@ -150,6 +150,8 @@ export type ThreadItem =
     })
   /** The agent asks you something of its own: "Start with the first?" */
   | (Base & { kind: 'ask'; text: string; options: string[]; answer?: string })
+  /** A step of the landing page's guided tour: the agent says something and offers where to go next. */
+  | (Base & { kind: 'guide'; text: string; options: string[]; answer?: string })
   /** Where your decisions live: one open at a time, the rest as rows. */
   | (Base & { kind: 'queue' })
   /** Another workspace, from your personal space: "Tessera · 2 need you". */
