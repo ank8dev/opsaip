@@ -41,13 +41,17 @@ export default function ThreadScreen() {
   const firstIds = useMemo(() => new Set(thread.map((i) => i.id)), [ws.id]);
 
   // Follow the conversation once the brief is out: new lines and "writing…" scroll into view.
+  // A new line keeps growing for a moment as it lays out (chips wrap, cards expand), so the thread
+  // stays pinned to its end for a short while after, until you scroll yourself.
   const revealed = useRef<Record<string, boolean>>({});
+  const follow = useRef(0);
   const count = stream.length;
   useEffect(() => {
     if (!revealed.current[ws.id]) {
       if (done) revealed.current[ws.id] = true;
       return;
     }
+    follow.current = Date.now() + 1500;
     const t = setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120);
     return () => clearTimeout(t);
   }, [count, typing, ws.id, done]);
@@ -69,6 +73,7 @@ export default function ThreadScreen() {
 
   // Starting the queue brings it up under the header, so the open card is in view.
   const toQueue = () => {
+    follow.current = 0;
     setTimeout(() => {
       const y = rows.current.queue;
       if (y !== undefined) scroll.current?.scrollTo({ y: Math.max(y - top - 64, 0), animated: true });
@@ -98,6 +103,8 @@ export default function ThreadScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="never"
+        onContentSizeChange={() => { if (Date.now() < follow.current) scroll.current?.scrollToEnd({ animated: true }); }}
+        onScrollBeginDrag={() => (follow.current = 0)}
         contentContainerStyle={{ paddingTop: top + 12, paddingHorizontal: 16, gap: 24 }}
       >
         {writing ? <WritingBrief /> : null}
