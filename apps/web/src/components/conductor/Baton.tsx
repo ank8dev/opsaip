@@ -18,6 +18,7 @@ import { animate, motion, useMotionValue } from 'motion/react';
 import type { AnyTask, TaskStatus } from '../../types';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
+import { isActive } from '../../data/selectors';
 import { locate, restPoint, type Point } from './findTarget';
 import './Baton.css';
 
@@ -43,7 +44,7 @@ function aim(p: Point): { x: number; y: number; angle: number } {
 
 function lightState(tasks: AnyTask[]): 'idle' | 'live' | 'error' {
   if (tasks.some((t) => t.status === 'Failed')) return 'error';
-  if (tasks.some((t) => t.status === 'Working' || t.status === 'Needs you')) return 'live';
+  if (tasks.some(isActive)) return 'live';
   return 'idle';
 }
 
@@ -154,7 +155,7 @@ export function Baton({ rootRef }: { rootRef: RefObject<HTMLElement | null> }) {
         events.push({ type: 'beat', id: task.id });
       }
     }
-    const finale = !allTasks.some((task) => task.status === 'Working' || task.status === 'Needs you');
+    const finale = !allTasks.some(isActive);
     for (const ev of events) {
       if (ev.type === 'beat' && busy.current > 3) continue; // a burst of steps plays as a few beats
       busy.current++;

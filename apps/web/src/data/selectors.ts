@@ -52,9 +52,14 @@ export function tasksForConnection(c: McpConnection, tasks: Task[]): Task[] {
   return tasks.filter((t) => (c.direction === 'in' ? t.source === c.name && t.owner === c.owner : t.tool === c.name));
 }
 
+/** An agent is active while it works or waits for someone; Failed, Queued and Done are not. */
+export function isActive(t: { status: TaskStatus }): boolean {
+  return t.status === 'Working' || t.status === 'Needs you';
+}
+
 /** Agents working or waiting for someone, per teammate. */
 export function runningAgents(personId: string, tasks: Task[]): number {
-  return tasks.filter((t) => t.owner === personId && (t.status === 'Working' || t.status === 'Needs you')).length;
+  return tasks.filter((t) => t.owner === personId && isActive(t)).length;
 }
 
 export function mapState(statusMap: StatusMapRow[], status: string, tool: string): string {
