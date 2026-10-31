@@ -1,5 +1,9 @@
 # Opsaip
 
+## Status
+
+In development. The interface runs on a sample team (Tessera). The agent server is next.
+
 **Opsaip is an open source, self-hosted conductor for developer teams and their AI agents.**
 
 It sits between your team's tools (GitHub, Linear, Notion, Slack, reached through MCP servers)
