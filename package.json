@@ -3,7 +3,7 @@
   "private": true,
   "description": "Open source, self-hosted conductor for developer teams and their AI agents",
   "workspaces": [
-    "apps/*"
+    "apps/web"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @opsaip/web --",
