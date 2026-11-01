@@ -28,6 +28,9 @@ opsaip/
         data/         pure helpers + the one place data is loaded from
         mocks/        sample data, same shape the server will return
       reference/    the original HTML prototype the app was ported from
+  packages/
+    core/         @opsaip/core — pure, UI-free logic shared by web and the server
+                  (agent task statuses, applyReport), with Vitest tests
   brand/          logo sources, SVG/PNG exports, Opsaip Display font, brand tokens
 ```
 
@@ -47,6 +50,7 @@ npm install          # once, from the repository root
 npm run dev          # http://localhost:5173
 npm run build        # production build in apps/web/dist/
 npm run preview      # serve that build locally
+npm test             # run the tests of every workspace
 ```
 
 Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.

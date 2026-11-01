@@ -3,12 +3,14 @@
   "private": true,
   "description": "Open source, self-hosted conductor for developer teams and their AI agents",
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "packages/core"
   ],
   "scripts": {
     "dev": "npm run dev --workspace @opsaip/web --",
     "build": "npm run build --workspace @opsaip/web",
-    "preview": "npm run preview --workspace @opsaip/web --"
+    "preview": "npm run preview --workspace @opsaip/web --",
+    "test": "npm test --workspaces --if-present"
   },
   "engines": {
     "node": ">=20.19"
