@@ -30,7 +30,8 @@ opsaip/
       reference/    the original HTML prototype the app was ported from
   packages/
     core/         @opsaip/core — pure, UI-free logic shared by web and the server
-                  (agent task statuses, applyReport), with Vitest tests
+                  (agent task statuses, applyReport, in-memory task store),
+                  with Vitest tests
   brand/          logo sources, SVG/PNG exports, Opsaip Display font, brand tokens
 ```
 
