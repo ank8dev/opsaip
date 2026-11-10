@@ -5,4 +5,5 @@ export {
   type ApplyReportResult,
   type StatusReport,
 } from './applyReport';
+export { parseReport, type ParseReportResult } from './parseReport';
 export { createTaskStore, type TaskStore } from './taskStore';

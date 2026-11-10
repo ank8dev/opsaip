@@ -19,6 +19,15 @@ const NEXT: Record<AgentTaskStatus, readonly AgentTaskStatus[]> = {
   failed: ['queued'],
 };
 
+/** Every status, in lifecycle order. Derived from NEXT, so the two lists cannot drift apart. */
+export const AGENT_TASK_STATUSES = Object.keys(NEXT) as readonly AgentTaskStatus[];
+
+/** True if value is one of the AgentTaskStatus strings. Safe for any input. */
+export function isAgentTaskStatus(value: unknown): value is AgentTaskStatus {
+  // hasOwn, not `in`: "toString" or "__proto__" must not count as statuses.
+  return typeof value === 'string' && Object.hasOwn(NEXT, value);
+}
+
 export function canTransition(from: AgentTaskStatus, to: AgentTaskStatus): boolean {
   return NEXT[from].includes(to);
 }
