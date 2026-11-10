@@ -61,10 +61,12 @@ Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.
 
 ## Run the server
 
-Needs Node.js 22.13 or newer.
+Needs Node.js 22.13 or newer. The server needs an access token and will not start without one,
+on any host, localhost included.
 
 ```bash
-npm run server       # http://127.0.0.1:4100
+export OPSAIP_TOKEN="$(openssl rand -hex 32)"   # once per shell; keep it secret
+npm run server                                 # http://127.0.0.1:4100
 ```
 
 | Variable      | Default            | Meaning                                                                                  |
@@ -72,8 +74,10 @@ npm run server       # http://127.0.0.1:4100
 | `OPSAIP_HOST` | `127.0.0.1`        | Address to listen on. Empty counts as unset.                                             |
 | `OPSAIP_PORT` | `4100`             | Port, 1–65535. A bad value stops the server at startup.                                  |
 | `OPSAIP_DB`   | `./data/opsaip.db` | SQLite file, created if missing. Relative to the working directory: `server/` when started with `npm run server`, so `server/data/opsaip.db` (git-ignored). |
+| `OPSAIP_TOKEN` | none, required    | Access token: at least 32 visible ASCII characters, no spaces. The server never logs it. |
 
-Endpoints (v0). Errors are JSON: `{ "error": "<reason>" }`.
+Endpoints (v0). Every request except `GET /healthz` must send `Authorization: Bearer <token>`;
+a missing or wrong token gets 401. Errors are JSON: `{ "error": "<reason>" }`.
 
 | Request             | Response                                                                                                                           |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -82,7 +86,7 @@ Endpoints (v0). Errors are JSON: `{ "error": "<reason>" }`.
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 
 ```bash
-curl -H 'content-type: application/json' \
+curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
   -d '{"taskId":"demo","status":"queued","at":"2026-11-10T16:00:00Z"}' \
   http://127.0.0.1:4100/v1/reports
 ```

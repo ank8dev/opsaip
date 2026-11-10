@@ -1,10 +1,13 @@
 // Server settings, read from environment variables once at startup.
+import { HOW_TO_CREATE_TOKEN, tokenProblem } from './accessToken';
 
 export interface Config {
   host: string;
   port: number;
   /** SQLite file. A relative path is relative to the working directory. */
   dbPath: string;
+  /** Access token for every request except /healthz. Never log it. */
+  token: string;
 }
 
 export const DEFAULT_HOST = '127.0.0.1';
@@ -18,6 +21,10 @@ export class ConfigError extends Error {
 
 /**
  * Read the config from env (pass process.env). Throws ConfigError on a bad value.
+ *
+ * OPSAIP_TOKEN is required on every host, localhost included: localhost is
+ * not a security boundary (other local processes, browser DNS rebinding).
+ * Error messages never contain the token.
  *
  * An empty or blank variable counts as unset. This matters for OPSAIP_HOST:
  * server.listen(port, '') would listen on ALL interfaces, not on localhost.
@@ -37,7 +44,14 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
 
   const dbPath = valueOf(env.OPSAIP_DB) ?? DEFAULT_DB_PATH;
 
-  return { host, port, dbPath };
+  const token = valueOf(env.OPSAIP_TOKEN);
+  if (token === undefined) {
+    throw new ConfigError(`OPSAIP_TOKEN is not set. It is required on every host. ${HOW_TO_CREATE_TOKEN}`);
+  }
+  const problem = tokenProblem(token);
+  if (problem !== undefined) throw new ConfigError(`${problem}. ${HOW_TO_CREATE_TOKEN}`);
+
+  return { host, port, dbPath, token };
 }
 
 function valueOf(raw: string | undefined): string | undefined {

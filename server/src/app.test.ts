@@ -10,7 +10,7 @@ let server: Server | undefined;
 let base = '';
 
 async function start(options: Partial<AppOptions> = {}): Promise<void> {
-  server = createApp({ store: createTaskStore(), ...options });
+  server = createApp({ store: createTaskStore(), token: TOKEN, ...options });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -28,7 +28,7 @@ function post(
   body: RequestInit['body'],
   headers: Record<string, string> = JSON_HEADERS,
 ): Promise<Response> {
-  return fetch(`${base}/v1/reports`, { method: 'POST', headers, body });
+  return fetch(`${base}/v1/reports`, { method: 'POST', headers: { ...AUTH, ...headers }, body });
 }
 
 function report(taskId: string, status: string, at: string): Promise<Response> {
@@ -57,11 +57,15 @@ function rawRequest(
 }
 
 async function tasks(): Promise<unknown> {
-  const res = await fetch(`${base}/v1/tasks`);
+  const res = await fetch(`${base}/v1/tasks`, { headers: AUTH });
   expect(res.status).toBe(200);
   return ((await res.json()) as { tasks: unknown }).tasks;
 }
 
+// Access token rules are tested in accessToken.test.ts; here every request
+// to a protected path sends the right token (only /healthz is open).
+const TOKEN = 'app-test-token-0123456789abcdef0123';
+const AUTH = { authorization: `Bearer ${TOKEN}` };
 const JSON_HEADERS = { 'content-type': 'application/json' };
 const T0 = '2026-11-01T10:00:00Z';
 const T1 = '2026-11-01T10:05:00Z';
@@ -84,7 +88,7 @@ describe('GET /healthz', () => {
 describe('GET /v1/tasks', () => {
   it('returns an empty list at first', async () => {
     await start();
-    const res = await fetch(`${base}/v1/tasks`);
+    const res = await fetch(`${base}/v1/tasks`, { headers: AUTH });
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
     expect(await res.json()).toEqual({ tasks: [] });
   });
@@ -247,6 +251,7 @@ describe('POST /v1/reports', () => {
       // Headers promise 1 MB, but no body byte is ever sent. A server that
       // waited for the body would never answer and the test would time out.
       const res = await rawRequest('POST', '/v1/reports', {
+        ...AUTH,
         ...JSON_HEADERS,
         'content-length': 1_000_000,
       });
@@ -266,7 +271,7 @@ describe('POST /v1/reports', () => {
       });
       const res = await fetch(`${base}/v1/reports`, {
         method: 'POST',
-        headers: JSON_HEADERS,
+        headers: { ...AUTH, ...JSON_HEADERS },
         body,
         duplex: 'half',
       });
@@ -279,14 +284,14 @@ describe('POST /v1/reports', () => {
 describe('routing', () => {
   it('404 for an unknown path', async () => {
     await start();
-    const res = await fetch(`${base}/v1/nope`);
+    const res = await fetch(`${base}/v1/nope`, { headers: AUTH });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'not found' });
   });
 
   it('404 for "//host/v1/tasks": the path is not parsed as a URL with a host', async () => {
     await start();
-    expect((await rawRequest('GET', '//evil/v1/tasks')).statusCode).toBe(404);
+    expect((await rawRequest('GET', '//evil/v1/tasks', AUTH)).statusCode).toBe(404);
   });
 
   it.each([
@@ -295,7 +300,7 @@ describe('routing', () => {
     ['DELETE', '/healthz', 'GET'],
   ])('405 for %s %s, with Allow: %s', async (method, path, allow) => {
     await start();
-    const res = await fetch(`${base}${path}`, { method });
+    const res = await fetch(`${base}${path}`, { method, headers: AUTH });
     expect(res.status).toBe(405);
     expect(res.headers.get('allow')).toBe(allow);
     expect(await res.json()).toEqual({ error: 'method not allowed' });
