@@ -1,0 +1,74 @@
+name: ci
+
+# Runs on every PR. The three job names below are the REQUIRED status checks:
+#   checks, tests-required, self-review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck --workspaces --if-present
+      - name: Tests (apps/web + packages/core)
+        run: npm test
+      - name: CI script tests
+        run: node --test .github/scripts/scripts.test.mjs
+      - name: Build web
+        run: npm run build
+
+  tests-required:
+    name: tests-required
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Source changes need test changes
+        run: git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" | node .github/scripts/require-tests.mjs
+
+  self-review:
+    name: self-review
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+    steps:
+      - name: PR description has a Self-review section
+        run: |
+          # Heading "## Self-review" followed by at least one non-empty line.
+          if printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '
+            /^##[[:space:]]+Self-review[[:space:]]*$/ { found = 1; next }
+            found && /^##[[:space:]]/ { exit }
+            found && /[^[:space:]]/ { filled = 1 }
+            END { exit !(found && filled) }'; then
+            echo "OK: Self-review section found."
+          else
+            echo "::error::PR description needs a '## Self-review' section (what was checked, known risks, what tests do not cover)."
+            exit 1
+          fi
