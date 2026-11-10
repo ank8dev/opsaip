@@ -31,6 +31,9 @@ export function parseReport(input: unknown): ParseReportResult {
     if (taskId.length > MAX_TASK_ID_LENGTH) {
       return fail(`taskId must be at most ${MAX_TASK_ID_LENGTH} characters`);
     }
+    // After the length check, so trim() never runs on an oversized string.
+    // The value itself is not trimmed: "  a " stays as sent.
+    if (taskId.trim().length === 0) return fail('taskId must not be only whitespace');
 
     if (status === undefined) return fail('status is missing');
     if (!isAgentTaskStatus(status)) {
