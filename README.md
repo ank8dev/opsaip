@@ -2,7 +2,8 @@
 
 ## Status
 
-In development. The interface runs on a sample team (Tessera). The agent server is next.
+In development. The interface runs on a sample team (Tessera). The agent server has a first
+HTTP API (v0, see [Run the server](#run-the-server)).
 
 **Opsaip is an open source, self-hosted conductor for developer teams and their AI agents.**
 
@@ -32,6 +33,8 @@ opsaip/
     core/         @opsaip/core — pure, UI-free logic shared by web and the server
                   (agent task statuses, applyReport, in-memory task store),
                   with Vitest tests
+  server/         @opsaip/server — the self-hosted server, v0: an HTTP API that agents
+                  report task statuses to (node:http + @opsaip/core), with Vitest tests
   brand/          logo sources, SVG/PNG exports, Opsaip Display font, brand tokens
 ```
 
@@ -39,7 +42,7 @@ opsaip/
 
 - **`apps/desktop/`** — a desktop app: an Electron shell around the same `apps/web` build
   (like Claude desktop around claude.ai). No UI code of its own.
-- **`server/`** — the self-hosted Opsaip server: the MCP endpoint agents report to, sync with
+- **`server/`, next steps** — the MCP endpoint agents report to, sync with
   Linear / GitHub / Notion, Slack messaging, and the API the web app reads instead of mocks.
 
 ## Run the web app
@@ -55,6 +58,35 @@ npm test             # run the tests of every workspace
 ```
 
 Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.
+
+## Run the server
+
+Needs Node.js 22.13 or newer.
+
+```bash
+npm run server       # http://127.0.0.1:4100
+```
+
+| Variable      | Default     | Meaning                                                 |
+| ------------- | ----------- | ------------------------------------------------------- |
+| `OPSAIP_HOST` | `127.0.0.1` | Address to listen on. Empty counts as unset.            |
+| `OPSAIP_PORT` | `4100`      | Port, 1–65535. A bad value stops the server at startup. |
+
+Endpoints (v0). Errors are JSON: `{ "error": "<reason>" }`.
+
+| Request             | Response                                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
+| `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
+| `GET /healthz`      | 200 `ok`                                                                                                                           |
+
+```bash
+curl -H 'content-type: application/json' \
+  -d '{"taskId":"demo","status":"queued","at":"2026-11-10T16:00:00Z"}' \
+  http://127.0.0.1:4100/v1/reports
+```
+
+v0 keeps tasks in memory: they are lost when the server stops.
 
 ## Design
 
