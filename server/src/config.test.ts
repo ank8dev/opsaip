@@ -1,35 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEFAULT_HOST, DEFAULT_PORT, loadConfig } from './config';
+import { ConfigError, DEFAULT_DB_PATH, DEFAULT_HOST, DEFAULT_PORT, loadConfig } from './config';
 
 describe('loadConfig', () => {
-  it('defaults to 127.0.0.1:4100', () => {
-    expect(loadConfig({})).toEqual({ host: '127.0.0.1', port: 4100 });
-    expect(DEFAULT_HOST).toBe('127.0.0.1');
-    expect(DEFAULT_PORT).toBe(4100);
+  const defaults = { host: DEFAULT_HOST, port: DEFAULT_PORT, dbPath: DEFAULT_DB_PATH };
+
+  it('defaults to 127.0.0.1:4100 and ./data/opsaip.db', () => {
+    expect(loadConfig({})).toEqual({ host: '127.0.0.1', port: 4100, dbPath: './data/opsaip.db' });
   });
 
-  it('reads OPSAIP_HOST and OPSAIP_PORT', () => {
-    expect(loadConfig({ OPSAIP_HOST: '0.0.0.0', OPSAIP_PORT: '8080' })).toEqual({
-      host: '0.0.0.0',
-      port: 8080,
-    });
+  it('reads OPSAIP_HOST, OPSAIP_PORT and OPSAIP_DB', () => {
+    expect(
+      loadConfig({ OPSAIP_HOST: '0.0.0.0', OPSAIP_PORT: '8080', OPSAIP_DB: '/var/lib/opsaip/x.db' }),
+    ).toEqual({ host: '0.0.0.0', port: 8080, dbPath: '/var/lib/opsaip/x.db' });
   });
 
   it('treats empty or blank values as unset, so an empty host never means "all interfaces"', () => {
-    expect(loadConfig({ OPSAIP_HOST: '', OPSAIP_PORT: '' })).toEqual({
-      host: DEFAULT_HOST,
-      port: DEFAULT_PORT,
-    });
-    expect(loadConfig({ OPSAIP_HOST: '  ', OPSAIP_PORT: ' ' })).toEqual({
-      host: DEFAULT_HOST,
-      port: DEFAULT_PORT,
-    });
+    expect(loadConfig({ OPSAIP_HOST: '', OPSAIP_PORT: '', OPSAIP_DB: '' })).toEqual(defaults);
+    expect(loadConfig({ OPSAIP_HOST: '  ', OPSAIP_PORT: ' ', OPSAIP_DB: ' ' })).toEqual(defaults);
   });
 
   it('trims surrounding whitespace', () => {
-    expect(loadConfig({ OPSAIP_HOST: ' ::1 ', OPSAIP_PORT: ' 4200 ' })).toEqual({
+    expect(loadConfig({ OPSAIP_HOST: ' ::1 ', OPSAIP_PORT: ' 4200 ', OPSAIP_DB: ' a.db ' })).toEqual({
       host: '::1',
       port: 4200,
+      dbPath: 'a.db',
     });
   });
 

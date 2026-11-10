@@ -1,7 +1,10 @@
 // Entry point: `npm run server` from the repository root.
-import { createTaskStore } from '@opsaip/core';
+import { resolve } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
 import { ConfigError, loadConfig, type Config } from './config';
+import { openDatabase } from './db';
+import { createSqliteTaskStore } from './sqliteTaskStore';
 
 let config: Config;
 try {
@@ -12,8 +15,16 @@ try {
   process.exit(1);
 }
 
-// v0: tasks live in memory and are lost when the process stops.
-const server = createApp({ store: createTaskStore() });
+const dbPath = resolve(config.dbPath);
+let db: DatabaseSync;
+try {
+  db = openDatabase(dbPath);
+} catch (error) {
+  console.error(`opsaip: cannot open the database ${dbPath}: ${(error as Error).message}`);
+  process.exit(1);
+}
+
+const server = createApp({ store: createSqliteTaskStore(db) });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
@@ -24,11 +35,14 @@ server.on('error', (error) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`opsaip: server listening on ${url}`);
+  console.log(`opsaip: server listening on ${url}, database ${dbPath}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    server.close(() => process.exit(0));
+    server.close(() => {
+      db.close();
+      process.exit(0);
+    });
   });
 }

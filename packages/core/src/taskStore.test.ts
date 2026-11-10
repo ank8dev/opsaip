@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { StatusReport } from './applyReport';
+import type { AgentTask, StatusReport } from './applyReport';
 import { createTaskStore } from './taskStore';
 
 const T0 = '2026-11-01T10:00:00.000Z';
@@ -147,6 +147,68 @@ describe('createTaskStore', () => {
       const b = createTaskStore();
       expect(a.all()).toHaveLength(1);
       expect(b.all()).toEqual([]);
+    });
+  });
+
+  describe('initial tasks', () => {
+    const running: AgentTask = { id: 'task-1', status: 'running', updatedAt: T1 };
+
+    it('starts with the given tasks, in the given order', () => {
+      const other: AgentTask = { id: 'task-0', status: 'done', updatedAt: T0 };
+      const store = createTaskStore([running, other]);
+      expect(store.all()).toEqual([running, other]);
+      expect(store.get('task-1')).toEqual(running);
+    });
+
+    it('applies the normal rules to initial tasks', () => {
+      // A running task cannot be created through apply (only queued can),
+      // which is why the store needs initial tasks at all.
+      const store = createTaskStore([running]);
+      expect(store.apply(report({ status: 'queued', at: T1 }))).toEqual({
+        ok: false,
+        reason: 'transition not allowed: running -> queued',
+      });
+      expect(store.apply(report({ status: 'done', at: T1 }))).toEqual({
+        ok: true,
+        task: { ...running, status: 'done' },
+      });
+    });
+
+    it('treats a resent last report as a duplicate', () => {
+      const store = createTaskStore([running]);
+      expect(store.apply(report({ status: 'running', at: T1 }))).toEqual({
+        ok: true,
+        task: running,
+      });
+    });
+
+    it('copies only id, status and updatedAt, and is not affected by later changes', () => {
+      const input = { ...running, extra: 'x' };
+      const store = createTaskStore([input]);
+      input.updatedAt = T0;
+      expect(store.get('task-1')).toEqual(running);
+    });
+
+    it.each([
+      ['null', null],
+      ['a string', 'task-1'],
+      ['no id', { status: 'queued', updatedAt: T0 }],
+      ['an empty id', { id: '', status: 'queued', updatedAt: T0 }],
+      ['a numeric id', { id: 1, status: 'queued', updatedAt: T0 }],
+      ['an unknown status', { id: 'task-1', status: 'paused', updatedAt: T0 }],
+      ['a "toString" status', { id: 'task-1', status: 'toString', updatedAt: T0 }],
+      ['no updatedAt', { id: 'task-1', status: 'queued' }],
+      ['an unparsable updatedAt', { id: 'task-1', status: 'queued', updatedAt: 'yesterday' }],
+    ])('throws a TypeError for a task with %s', (_name, task) => {
+      const tasks = [running, task] as unknown as AgentTask[];
+      expect(() => createTaskStore(tasks)).toThrow(new TypeError('initial task 1 is malformed'));
+    });
+
+    it('throws a TypeError for a repeated id', () => {
+      const again: AgentTask = { ...running, status: 'queued' };
+      expect(() => createTaskStore([running, again])).toThrow(
+        new TypeError('initial task 1 repeats an earlier id'),
+      );
     });
   });
 });

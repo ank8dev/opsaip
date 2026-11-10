@@ -3,10 +3,13 @@
 export interface Config {
   host: string;
   port: number;
+  /** SQLite file. A relative path is relative to the working directory. */
+  dbPath: string;
 }
 
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 4100;
+export const DEFAULT_DB_PATH = './data/opsaip.db';
 
 /** A setting is wrong. The message is safe to print and says how to fix it. */
 export class ConfigError extends Error {
@@ -32,7 +35,9 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
     }
   }
 
-  return { host, port };
+  const dbPath = valueOf(env.OPSAIP_DB) ?? DEFAULT_DB_PATH;
+
+  return { host, port, dbPath };
 }
 
 function valueOf(raw: string | undefined): string | undefined {
