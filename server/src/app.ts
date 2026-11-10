@@ -1,11 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { parseReport, type TaskStore } from '@opsaip/core';
+import { createTokenCheck, tokenProblem } from './accessToken';
 
 /** Largest request body accepted, in bytes (16 KB). */
 export const MAX_BODY_BYTES = 16 * 1024;
 
 export interface AppOptions {
   store: TaskStore;
+  /** Access token. Every request except /healthz must send "Authorization: Bearer <token>". */
+  token: string;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
 }
@@ -21,8 +24,16 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  *
  * Errors are JSON: { "error": "<reason>" }. Unknown path -> 404, known path
  * with another method -> 405 with an Allow header.
+ *
+ * Every path except /healthz needs the access token, checked first: before
+ * routing (so a 404 does not reveal which paths exist) and before reading
+ * the body. Missing or wrong token -> 401.
  */
-export function createApp({ store, logError = defaultLogError }: AppOptions): Server {
+export function createApp({ store, token, logError = defaultLogError }: AppOptions): Server {
+  // Same rule as loadConfig, so no caller can start a server with a weak token.
+  const problem = tokenProblem(token);
+  if (problem !== undefined) throw new TypeError(problem);
+  const isAuthorized = createTokenCheck(token);
   const routes: Record<string, Record<string, Handler>> = {
     '/healthz': {
       GET: (_req, res) => sendText(res, 200, 'ok'),
@@ -77,6 +88,16 @@ export function createApp({ store, logError = defaultLogError }: AppOptions): Se
     // Path only, query string ignored. Not new URL(req.url, base): it reads
     // "//host/path" as another host, so "//x/v1/tasks" would route to /v1/tasks.
     const path = (req.url ?? '/').split('?', 1)[0];
+
+    if (path !== '/healthz' && !isAuthorized(req.headers.authorization)) {
+      // Same answer for a missing and a wrong token. The body is not waited
+      // for, and closing the connection stops reading the rest of it.
+      return sendJson(res, 401, { error: 'missing or invalid access token' }, {
+        'www-authenticate': 'Bearer',
+        connection: 'close',
+      });
+    }
+
     const methods = Object.hasOwn(routes, path) ? routes[path] : undefined;
     if (methods === undefined) return sendJson(res, 404, { error: 'not found' });
 

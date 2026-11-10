@@ -24,7 +24,9 @@ try {
   process.exit(1);
 }
 
-const server = createApp({ store: createSqliteTaskStore(db) });
+// config.token is passed on and never logged; the log lines below print
+// only the address and the database path.
+const server = createApp({ store: createSqliteTaskStore(db), token: config.token });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 

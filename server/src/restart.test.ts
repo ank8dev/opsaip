@@ -1,18 +1,24 @@
 // Tasks survive a restart: write, restart, read back.
-import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { createServer as createNetServer, type AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app';
 import { openDatabase } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
+import {
+  freePort,
+  spawnServer,
+  stopServer,
+  waitUntilListening,
+  type ServerProcess,
+} from './testServerProcess';
 
-const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url));
+const TOKEN = 'restart-test-token-0123456789abcdef';
+const AUTH = { authorization: `Bearer ${TOKEN}` };
 const T0 = '2026-11-01T10:00:00Z';
 const T1 = '2026-11-01T10:05:00Z';
 const T2 = '2026-11-01T10:10:00Z';
@@ -30,13 +36,14 @@ afterEach(() => {
 function report(base: string, taskId: string, status: string, at: string): Promise<Response> {
   return fetch(`${base}/v1/reports`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { ...AUTH, 'content-type': 'application/json' },
     body: JSON.stringify({ taskId, status, at }),
   });
 }
 
 async function tasks(base: string): Promise<unknown> {
-  return ((await (await fetch(`${base}/v1/tasks`)).json()) as { tasks: unknown }).tasks;
+  const res = await fetch(`${base}/v1/tasks`, { headers: AUTH });
+  return ((await res.json()) as { tasks: unknown }).tasks;
 }
 
 const EXPECTED = [
@@ -57,7 +64,7 @@ async function writeTasks(base: string): Promise<void> {
 describe('restart, in process', () => {
   async function start(): Promise<{ server: Server; base: string; close: () => Promise<void> }> {
     const db = openDatabase(dbPath);
-    const server = createApp({ store: createSqliteTaskStore(db) });
+    const server = createApp({ store: createSqliteTaskStore(db), token: TOKEN });
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     return {
@@ -104,57 +111,33 @@ describe('restart, in process', () => {
 });
 
 describe('restart, real process (npm run server stopped with SIGTERM)', () => {
-  const children: ChildProcess[] = [];
+  const running: ServerProcess[] = [];
   afterEach(() => {
-    for (const child of children.splice(0)) child.kill('SIGKILL');
+    for (const server of running.splice(0)) server.child.kill('SIGKILL');
   });
 
-  async function freePort(): Promise<number> {
-    const probe = createNetServer().listen(0, '127.0.0.1');
-    await once(probe, 'listening');
-    const { port } = probe.address() as AddressInfo;
-    probe.close();
-    await once(probe, 'close');
-    return port;
-  }
-
-  /** Start src/main.ts the way `npm run server` does (tsx), and wait until it listens. */
-  async function startProcess(port: number): Promise<ChildProcess> {
-    const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
-      cwd: SERVER_DIR,
-      env: { ...process.env, OPSAIP_HOST: '127.0.0.1', OPSAIP_PORT: String(port), OPSAIP_DB: dbPath },
-      stdio: ['ignore', 'pipe', 'pipe'],
+  async function start(port: number): Promise<ServerProcess> {
+    const server = spawnServer({
+      OPSAIP_HOST: '127.0.0.1',
+      OPSAIP_PORT: String(port),
+      OPSAIP_DB: dbPath,
+      OPSAIP_TOKEN: TOKEN,
     });
-    children.push(child);
-    let output = '';
-    await new Promise<void>((resolve, reject) => {
-      const onData = (chunk: Buffer) => {
-        output += chunk.toString();
-        if (output.includes('server listening')) resolve();
-      };
-      child.stdout!.on('data', onData);
-      child.stderr!.on('data', onData);
-      child.on('exit', (code) => reject(new Error(`server exited (${code}):\n${output}`)));
-    });
-    return child;
-  }
-
-  async function stopProcess(child: ChildProcess): Promise<number | null> {
-    child.kill('SIGTERM');
-    const [code] = (await once(child, 'exit')) as [number | null];
-    return code;
+    running.push(server);
+    await waitUntilListening(server);
+    return server;
   }
 
   it('reads back what was written before the restart', { timeout: 30_000 }, async () => {
     const port = await freePort();
     const base = `http://127.0.0.1:${port}`;
 
-    const first = await startProcess(port);
+    const first = await start(port);
     await writeTasks(base);
-    expect(await stopProcess(first)).toBe(0); // clean shutdown on SIGTERM
+    expect(await stopServer(first)).toBe(0); // clean shutdown on SIGTERM
 
-    const second = await startProcess(port);
+    const second = await start(port);
     expect(await tasks(base)).toEqual(EXPECTED);
-    expect(await stopProcess(second)).toBe(0);
+    expect(await stopServer(second)).toBe(0);
   });
 });
