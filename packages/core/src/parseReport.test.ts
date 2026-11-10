@@ -49,7 +49,7 @@ describe('parseReport', () => {
     });
   });
 
-  describe('rule: taskId is a non-empty string, max 200 chars', () => {
+  describe('rule: taskId is a non-empty, non-blank string, max 200 chars', () => {
     it('rejects a missing taskId', () => {
       expect(reasonOf(without('taskId'))).toBe('taskId is missing');
     });
@@ -66,6 +66,32 @@ describe('parseReport', () => {
 
     it('rejects an empty taskId', () => {
       expect(reasonOf(withField('taskId', ''))).toBe('taskId must not be empty');
+    });
+
+    it.each([
+      ['spaces', '   '],
+      ['a single space', ' '],
+      ['tabs and newlines', '\t\n\r'],
+      ['a no-break space', '\u00A0'],
+      ['a byte order mark', '\uFEFF'],
+      ['a line separator', '\u2028'],
+    ])('rejects taskId that is only whitespace: %s', (_label, taskId) => {
+      expect(reasonOf(withField('taskId', taskId))).toBe('taskId must not be only whitespace');
+    });
+
+    it('accepts taskId with surrounding whitespace and keeps it unchanged', () => {
+      const result = parseReport(withField('taskId', '  task-1 '));
+      expect(result).toEqual({ ok: true, report: { ...valid, taskId: '  task-1 ' } });
+    });
+
+    it('reports the length rule first for an oversized whitespace taskId', () => {
+      const taskId = ' '.repeat(MAX_TASK_ID_LENGTH + 1);
+      expect(reasonOf(withField('taskId', taskId))).toBe('taskId must be at most 200 characters');
+    });
+
+    it('accepts exactly 200 characters with whitespace around a real id', () => {
+      const taskId = ` ${'a'.repeat(MAX_TASK_ID_LENGTH - 2)} `;
+      expect(parseReport(withField('taskId', taskId)).ok).toBe(true);
     });
 
     it('accepts exactly 200 characters', () => {
