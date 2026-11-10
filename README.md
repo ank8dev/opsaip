@@ -34,7 +34,7 @@ opsaip/
                   (agent task statuses, applyReport, in-memory task store),
                   with Vitest tests
   server/         @opsaip/server — the self-hosted server, v0: an HTTP API that agents
-                  report task statuses to (node:http + @opsaip/core), with Vitest tests
+                  report task statuses to (node:http, node:sqlite, @opsaip/core), with Vitest tests
   brand/          logo sources, SVG/PNG exports, Opsaip Display font, brand tokens
 ```
 
@@ -67,10 +67,11 @@ Needs Node.js 22.13 or newer.
 npm run server       # http://127.0.0.1:4100
 ```
 
-| Variable      | Default     | Meaning                                                 |
-| ------------- | ----------- | ------------------------------------------------------- |
-| `OPSAIP_HOST` | `127.0.0.1` | Address to listen on. Empty counts as unset.            |
-| `OPSAIP_PORT` | `4100`      | Port, 1–65535. A bad value stops the server at startup. |
+| Variable      | Default            | Meaning                                                                                  |
+| ------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| `OPSAIP_HOST` | `127.0.0.1`        | Address to listen on. Empty counts as unset.                                             |
+| `OPSAIP_PORT` | `4100`             | Port, 1–65535. A bad value stops the server at startup.                                  |
+| `OPSAIP_DB`   | `./data/opsaip.db` | SQLite file, created if missing. Relative to the working directory: `server/` when started with `npm run server`, so `server/data/opsaip.db` (git-ignored). |
 
 Endpoints (v0). Errors are JSON: `{ "error": "<reason>" }`.
 
@@ -86,7 +87,9 @@ curl -H 'content-type: application/json' \
   http://127.0.0.1:4100/v1/reports
 ```
 
-v0 keeps tasks in memory: they are lost when the server stops.
+Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
+On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is
+expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
 
 ## Design
 

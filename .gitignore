@@ -5,6 +5,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Server data (SQLite). Anchored: a bare "data/" would also hide apps/web/src/data/
+/server/data/
+
 # Environment (keep .env.example)
 .env
 .env.*
