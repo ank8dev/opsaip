@@ -1,0 +1,27 @@
+# Paths that need a human (the founder) to review and merge.
+# A PR that changes any of them fails the security-gate check, gets the
+# needs-founder label, and is NOT auto-merged. CI must still be green.
+#
+# One glob per line, matched against the full repo-relative path,
+# case-insensitive. Blank lines and lines starting with # are ignored.
+#   *    any characters except /
+#   **   any characters including / ("**/" also matches zero directories)
+#   ?    one character except /
+#   !    at the start of a line: exclude. The LAST matching line wins, so
+#        put exclusions after the rule they carve out of.
+# Renames count: the old path is checked too.
+
+.github/**
+**/auth/**
+**/permissions/**
+**/*token*
+**/*secret*
+**/.env*
+**/Dockerfile*
+**/docker-compose*
+**/package.json
+**/package-lock.json
+
+# Design tokens are not credentials: exclude them from **/*token* above.
+!**/styles/tokens.css
+!**/theme/tokens.ts

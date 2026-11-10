@@ -1,0 +1,58 @@
+name: security-gate
+
+# NOT a required check. It only decides whether auto-merge may be enabled.
+# pull_request_target: this file and SECURITY_PATHS are read from the BASE
+# branch, so a PR cannot weaken them. Nothing from the PR head is checked
+# out or executed; the gate only reads the list of changed file names.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: security-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # only to add / remove the needs-founder label
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Check out BASE (trusted) scripts and SECURITY_PATHS
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: .github
+          persist-credentials: false
+
+      - name: List files changed by the PR (API, no code checkout)
+        run: gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" > "$RUNNER_TEMP/files.json"
+
+      - name: Compare with SECURITY_PATHS
+        id: gate
+        run: |
+          set +e
+          node .github/scripts/security-gate.mjs .github/SECURITY_PATHS "$RUNNER_TEMP/files.json"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Label needs-founder
+        if: steps.gate.outputs.code != '0'
+        run: gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label needs-founder || echo "::warning::could not add label needs-founder (does it exist?)"
+
+      - name: Remove needs-founder
+        if: steps.gate.outputs.code == '0'
+        run: gh pr edit "$PR_NUMBER" --repo "$REPO" --remove-label needs-founder || true
+
+      - name: Fail if a protected path changed
+        if: steps.gate.outputs.code != '0'
+        run: |
+          echo "::error::PR touches protected paths (see log above). Needs founder review; auto-merge will not be enabled."
+          exit 1
