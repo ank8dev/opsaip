@@ -117,7 +117,7 @@ expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
 ## Run the MCP server
 
 Agents report through MCP: `packages/mcp` is a stdio MCP server that the agent's MCP client
-starts. Run `npm install` in the repository once. It needs the Opsaip server running and these
+starts. **To add it to Claude Code or Codex, follow [docs/CONNECT.md](docs/CONNECT.md).** Run `npm install` in the repository once. It needs the Opsaip server running and these
 variables:
 
 | Variable       | Meaning                                                                                  |
