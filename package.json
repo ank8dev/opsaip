@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/web",
     "packages/core",
+    "packages/mcp",
     "server"
   ],
   "scripts": {
