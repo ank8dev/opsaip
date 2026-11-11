@@ -15,18 +15,20 @@ import { createTaskStore, type AgentTask, type TaskStore } from '@opsaip/core';
  * saved then; the HTTP layer turns the error into a 500.
  */
 export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
-  const COLUMNS = 'id, status, updated_at AS updatedAt';
+  const COLUMNS = 'id, status, updated_at AS updatedAt, title, agent, note';
   const selectOne = db.prepare(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`);
   const selectAll = db.prepare(`SELECT ${COLUMNS} FROM tasks ORDER BY seq`);
   const upsert = db.prepare(`
-    INSERT INTO tasks (id, status, updated_at) VALUES (?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+    INSERT INTO tasks (id, status, updated_at, title, agent, note) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET
+      status = excluded.status, updated_at = excluded.updated_at,
+      title = excluded.title, agent = excluded.agent, note = excluded.note
   `);
 
   // Rows come back as plain records; createTaskStore validates them.
   const loadOne = (id: string): AgentTask[] => {
     const row = selectOne.get(id);
-    return row === undefined ? [] : [row as unknown as AgentTask];
+    return row === undefined ? [] : [fromRow(row)];
   };
 
   return {
@@ -35,7 +37,7 @@ export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
     },
 
     all() {
-      return createTaskStore(selectAll.all() as unknown as AgentTask[]).all();
+      return createTaskStore(selectAll.all().map(fromRow)).all();
     },
 
     apply(report) {
@@ -48,7 +50,11 @@ export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
       db.exec('BEGIN IMMEDIATE');
       try {
         const result = createTaskStore(loadOne(report.taskId)).apply(report);
-        if (result.ok) upsert.run(result.task.id, result.task.status, result.task.updatedAt);
+        if (result.ok) {
+          const { id, status, updatedAt, title, agent, note } = result.task;
+          // A field that is not set is stored as NULL (node:sqlite rejects undefined).
+          upsert.run(id, status, updatedAt, title ?? null, agent ?? null, note ?? null);
+        }
         db.exec('COMMIT');
         return result;
       } catch (error) {
@@ -61,4 +67,17 @@ export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
       }
     },
   };
+}
+
+/**
+ * A row as a task: NULL in an optional column means "not set", so the key is
+ * left out, the same as in the in-memory store. Anything else is passed on
+ * unchanged for createTaskStore to validate.
+ */
+function fromRow(row: Record<string, unknown>): AgentTask {
+  const task: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value !== null) task[key] = value;
+  }
+  return task as unknown as AgentTask;
 }

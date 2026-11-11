@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AGENT_TASK_STATUSES, isAgentTaskStatus } from './agentTaskStatus';
-import { MAX_TASK_ID_LENGTH, parseReport } from './parseReport';
+import {
+  MAX_AGENT_LENGTH,
+  MAX_NOTE_LENGTH,
+  MAX_TASK_ID_LENGTH,
+  MAX_TITLE_LENGTH,
+  parseReport,
+} from './parseReport';
 
 const valid = {
   taskId: 'task-1',
@@ -191,6 +197,103 @@ describe('parseReport', () => {
       expect(reasonOf(withField('at', at))).toBe(
         'at must be an ISO 8601 timestamp like 2026-11-01T10:05:00Z',
       );
+    });
+  });
+
+  describe('rule: optional title, agent and note are non-blank strings within a limit', () => {
+    // title needs status "queued"; the base report for each field allows it.
+    const fields = [
+      { name: 'title', max: MAX_TITLE_LENGTH, base: { ...valid, status: 'queued' } },
+      { name: 'agent', max: MAX_AGENT_LENGTH, base: valid },
+      { name: 'note', max: MAX_NOTE_LENGTH, base: valid },
+    ] as const;
+
+    it('has the limits 200, 100 and 500', () => {
+      expect([MAX_TITLE_LENGTH, MAX_AGENT_LENGTH, MAX_NOTE_LENGTH]).toEqual([200, 100, 500]);
+    });
+
+    it('accepts a report with all three fields and copies them', () => {
+      const input = {
+        ...valid,
+        status: 'queued',
+        title: 'Fix login',
+        agent: 'claude-code',
+        note: 'picked up',
+      };
+      expect(parseReport(input)).toEqual({ ok: true, report: input });
+    });
+
+    describe.each(fields)('$name', ({ name, max, base }) => {
+      const make = (value: unknown) => ({ ...base, [name]: value });
+
+      it('is optional: without it the report has no such key', () => {
+        const result = parseReport(base);
+        expect(result.ok && Object.hasOwn(result.report, name)).toBe(false);
+      });
+
+      it('accepts exactly the limit and keeps the value unchanged', () => {
+        const value = ` ${'a'.repeat(max - 2)} `;
+        expect(parseReport(make(value))).toEqual({ ok: true, report: make(value) });
+      });
+
+      it('rejects one character over the limit', () => {
+        expect(reasonOf(make('a'.repeat(max + 1)))).toBe(
+          `${name} must be at most ${max} characters`,
+        );
+      });
+
+      it('reports the length rule first for an oversized whitespace value', () => {
+        expect(reasonOf(make(' '.repeat(max + 1)))).toBe(
+          `${name} must be at most ${max} characters`,
+        );
+      });
+
+      it('rejects an empty string', () => {
+        expect(reasonOf(make(''))).toBe(`${name} must not be empty`);
+      });
+
+      it.each([' ', '\t\n', '\u00A0'])('rejects only whitespace (%j)', (value) => {
+        expect(reasonOf(make(value))).toBe(`${name} must not be only whitespace`);
+      });
+
+      it.each([
+        ['null', null],
+        ['a number', 1],
+        ['an array', ['x']],
+        ['an object', { text: 'x' }],
+        ['a boolean', true],
+      ])('rejects %s', (_label, value) => {
+        expect(reasonOf(make(value))).toBe(`${name} must be a string`);
+      });
+    });
+
+    it.each(AGENT_TASK_STATUSES.filter((status) => status !== 'queued'))(
+      'rejects a title with status %s',
+      (status) => {
+        expect(reasonOf({ ...valid, status, title: 'Fix login' })).toBe(
+          'title is only allowed with status "queued"',
+        );
+      },
+    );
+
+    it('checks the status rule for title before its value', () => {
+      expect(reasonOf({ ...valid, status: 'running', title: null })).toBe(
+        'title is only allowed with status "queued"',
+      );
+    });
+
+    it('checks the required fields before the optional ones', () => {
+      expect(reasonOf({ ...without('at'), agent: 7 })).toBe('at is missing');
+    });
+
+    it.each(AGENT_TASK_STATUSES)('accepts agent and note with status %s', (status) => {
+      const input = { ...valid, status, agent: 'codex', note: 'Which branch?' };
+      expect(parseReport(input)).toEqual({ ok: true, report: input });
+    });
+
+    it('does not echo the input value in the reason', () => {
+      const reason = reasonOf(withField('note', 'x'.repeat(10_000)));
+      expect(reason).toBe('note must be at most 500 characters');
     });
   });
 

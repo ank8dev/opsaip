@@ -77,6 +77,62 @@ describe('applyReport', () => {
     });
   });
 
+  describe('optional fields of an accepted report', () => {
+    const full: AgentTask = {
+      ...task,
+      status: 'running',
+      title: 'Fix login',
+      agent: 'claude-code',
+      note: 'started',
+    };
+
+    it('sets agent and note from the report', () => {
+      const result = applyReport(task, report({ agent: 'codex', note: 'on it' }));
+      expect(result.ok && result.task).toEqual({
+        ...task,
+        status: 'running',
+        updatedAt: '2026-11-01T10:05:00.000Z',
+        agent: 'codex',
+        note: 'on it',
+      });
+    });
+
+    it('keeps title and agent when the report has none', () => {
+      const result = applyReport(full, report({ status: 'done' }));
+      expect(result.ok && result.task.title).toBe('Fix login');
+      expect(result.ok && result.task.agent).toBe('claude-code');
+    });
+
+    it('replaces agent when the report names another one', () => {
+      const result = applyReport(full, report({ status: 'done', agent: 'codex' }));
+      expect(result.ok && result.task.agent).toBe('codex');
+    });
+
+    it('clears the note when the report has none (the key is removed)', () => {
+      const waiting = { ...full, status: 'waiting_on_human' as const, note: 'Which branch?' };
+      const result = applyReport(waiting, report({ status: 'running' }));
+      expect(result.ok && Object.hasOwn(result.task, 'note')).toBe(false);
+    });
+
+    it('replaces the note with the new one', () => {
+      const result = applyReport(full, report({ status: 'waiting_on_human', note: 'Which branch?' }));
+      expect(result.ok && result.task.note).toBe('Which branch?');
+    });
+
+    it('replaces the title on a retry (failed -> queued) that has one', () => {
+      const failed = { ...full, status: 'failed' as const };
+      const result = applyReport(failed, report({ status: 'queued', title: 'Fix login, take 2' }));
+      expect(result.ok && result.task.title).toBe('Fix login, take 2');
+    });
+
+    it('changes nothing on a rejected report', () => {
+      const input = { ...full };
+      const result = applyReport(input, report({ status: 'queued', note: 'x' }));
+      expect(result.ok).toBe(false);
+      expect(input).toEqual(full);
+    });
+  });
+
   describe('never throws', () => {
     it('rejects a report for another task', () => {
       const result = applyReport(task, report({ taskId: 'task-2' }));

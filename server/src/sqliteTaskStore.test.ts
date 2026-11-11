@@ -57,6 +57,44 @@ describe('createSqliteTaskStore', () => {
     expect(sqlite.get('missing')).toBeUndefined();
   });
 
+  it('gives the same result as the in-memory core store for title, agent and note', () => {
+    const reports: StatusReport[] = [
+      { ...r('a', 'queued', T0), title: 'Fix login', agent: 'claude-code', note: 'n0' },
+      { ...r('a', 'queued', T0), note: 'ignored: exact duplicate' },
+      { ...r('a', 'running', T1), agent: 'codex' }, // note cleared, agent replaced
+      { ...r('a', 'waiting_on_human', T1), note: 'Which branch?' },
+      r('a', 'failed', T2), // note cleared
+      { ...r('a', 'queued', T2), title: 'Fix login, take 2' }, // retry renames
+      { ...r('b', 'queued', T0), note: 'only a note' },
+    ];
+    const memory = createTaskStore();
+    const sqlite = createSqliteTaskStore(db);
+
+    for (const report of reports) {
+      expect(sqlite.apply(report), JSON.stringify(report)).toEqual(memory.apply(report));
+      expect(sqlite.all()).toEqual(memory.all());
+    }
+    expect(sqlite.get('a')).toEqual({
+      id: 'a',
+      status: 'queued',
+      updatedAt: T2,
+      title: 'Fix login, take 2',
+      agent: 'codex',
+    });
+  });
+
+  it('stores a field that is not set as NULL and reads it back as absent', () => {
+    const store = createSqliteTaskStore(db);
+    store.apply({ ...r('a', 'queued', T0), note: 'n' });
+    store.apply(r('a', 'running', T1));
+    expect(db.prepare('SELECT title, agent, note FROM tasks').get()).toEqual({
+      title: null,
+      agent: null,
+      note: null,
+    });
+    expect(Object.keys(store.get('a')!).sort()).toEqual(['id', 'status', 'updatedAt']);
+  });
+
   it('keeps creation order when a task is updated later', () => {
     // Not alphabetical on purpose: ORDER BY id would give another order.
     const store = createSqliteTaskStore(db);

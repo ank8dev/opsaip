@@ -85,11 +85,28 @@ a missing or wrong token gets 401. Errors are JSON: `{ "error": "<reason>" }`.
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 
+A status report (the body of `POST /v1/reports`):
+
+| Field    | Required | Rule                                                                                       |
+| -------- | -------- | ------------------------------------------------------------------------------------------ |
+| `taskId` | yes      | String, 1–200 characters, not only whitespace.                                             |
+| `status` | yes      | `queued`, `running`, `waiting_on_human`, `done` or `failed`.                               |
+| `at`     | yes      | ISO 8601 timestamp with an offset, like `2026-11-10T16:00:00Z`.                            |
+| `title`  | no       | String, 1–200 characters. Only with `status: "queued"`; sets the task's title.             |
+| `agent`  | no       | String, 1–100 characters, e.g. `claude-code`. Replaces the task's agent.                   |
+| `note`   | no       | String, 1–500 characters, e.g. the question while `waiting_on_human`. Belongs to the new status: a report without a note clears it. |
+
+`GET /v1/tasks` returns `title`, `agent` and `note` only when they are set. Resending the exact
+same report (same `status` and `at`) changes nothing, even if its `note` differs.
+
 ```bash
 curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
-  -d '{"taskId":"demo","status":"queued","at":"2026-11-10T16:00:00Z"}' \
+  -d '{"taskId":"demo","status":"queued","at":"2026-11-10T16:00:00Z","title":"Try Opsaip"}' \
   http://127.0.0.1:4100/v1/reports
 ```
+
+The database schema version is kept in SQLite's `user_version`. A database from an older
+server is upgraded on start, in one transaction; one from a newer server is refused.
 
 Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
 On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is

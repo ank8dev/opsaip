@@ -43,6 +43,27 @@ describe('createTaskStore', () => {
       expect(store.all()).toEqual([]);
     });
 
+    it('creates the task with the report\'s title, agent and note', () => {
+      const store = createTaskStore();
+      const result = store.apply(report({ title: 'Fix login', agent: 'claude-code', note: 'n' }));
+      const created = {
+        id: 'task-1',
+        status: 'queued',
+        updatedAt: T0,
+        title: 'Fix login',
+        agent: 'claude-code',
+        note: 'n',
+      };
+      expect(result).toEqual({ ok: true, task: created });
+      expect(store.get('task-1')).toEqual(created);
+    });
+
+    it('leaves out optional fields the report does not have', () => {
+      const store = createTaskStore();
+      store.apply(report({ title: 'Fix login' }));
+      expect(Object.keys(store.get('task-1')!).sort()).toEqual(['id', 'status', 'title', 'updatedAt']);
+    });
+
     it('keeps tasks in creation order', () => {
       const store = createTaskStore();
       store.apply(report({ taskId: 'b' }));
@@ -94,6 +115,43 @@ describe('createTaskStore', () => {
       // Falls through to applyReport, which forbids queued -> queued.
       expect(result).toEqual({ ok: false, reason: 'transition not allowed: queued -> queued' });
       expect(store.get('task-1')?.updatedAt).toBe(T0);
+    });
+  });
+
+  describe('rule 3 and optional fields', () => {
+    it('ignores a different note on an exact duplicate', () => {
+      const store = createTaskStore();
+      store.apply(report({ note: 'first' }));
+      const result = store.apply(report({ note: 'second', agent: 'codex' }));
+      expect(result).toEqual({
+        ok: true,
+        task: { id: 'task-1', status: 'queued', updatedAt: T0, note: 'first' },
+      });
+    });
+  });
+
+  describe('rule 4 and optional fields', () => {
+    it('saves the merged fields: title kept, agent replaced, note replaced then cleared', () => {
+      const store = createTaskStore();
+      store.apply(report({ title: 'Fix login', agent: 'claude-code' }));
+      store.apply(report({ status: 'running', at: T1, agent: 'codex' }));
+      store.apply(report({ status: 'waiting_on_human', at: T1, note: 'Which branch?' }));
+      expect(store.get('task-1')).toEqual({
+        id: 'task-1',
+        status: 'waiting_on_human',
+        updatedAt: T1,
+        title: 'Fix login',
+        agent: 'codex',
+        note: 'Which branch?',
+      });
+      store.apply(report({ status: 'running', at: T1 }));
+      expect(store.get('task-1')).toEqual({
+        id: 'task-1',
+        status: 'running',
+        updatedAt: T1,
+        title: 'Fix login',
+        agent: 'codex',
+      });
     });
   });
 
@@ -182,11 +240,21 @@ describe('createTaskStore', () => {
       });
     });
 
-    it('copies only id, status and updatedAt, and is not affected by later changes', () => {
+    it('copies only the known fields, and is not affected by later changes', () => {
       const input = { ...running, extra: 'x' };
       const store = createTaskStore([input]);
       input.updatedAt = T0;
       expect(store.get('task-1')).toEqual(running);
+    });
+
+    it('copies title, agent and note of initial tasks', () => {
+      const full: AgentTask = { ...running, title: 't', agent: 'a', note: 'n' };
+      expect(createTaskStore([full]).get('task-1')).toEqual(full);
+    });
+
+    it('treats an undefined optional field as absent', () => {
+      const store = createTaskStore([{ ...running, note: undefined }]);
+      expect(Object.hasOwn(store.get('task-1')!, 'note')).toBe(false);
     });
 
     it.each([
@@ -199,6 +267,9 @@ describe('createTaskStore', () => {
       ['a "toString" status', { id: 'task-1', status: 'toString', updatedAt: T0 }],
       ['no updatedAt', { id: 'task-1', status: 'queued' }],
       ['an unparsable updatedAt', { id: 'task-1', status: 'queued', updatedAt: 'yesterday' }],
+      ['a null title', { id: 'task-1', status: 'queued', updatedAt: T0, title: null }],
+      ['a numeric agent', { id: 'task-1', status: 'queued', updatedAt: T0, agent: 1 }],
+      ['an object note', { id: 'task-1', status: 'queued', updatedAt: T0, note: {} }],
     ])('throws a TypeError for a task with %s', (_name, task) => {
       const tasks = [running, task] as unknown as AgentTask[];
       expect(() => createTaskStore(tasks)).toThrow(new TypeError('initial task 1 is malformed'));
