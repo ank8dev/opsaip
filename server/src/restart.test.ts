@@ -33,11 +33,17 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function report(base: string, taskId: string, status: string, at: string): Promise<Response> {
+function report(
+  base: string,
+  taskId: string,
+  status: string,
+  at: string,
+  extra: Record<string, string> = {},
+): Promise<Response> {
   return fetch(`${base}/v1/reports`, {
     method: 'POST',
     headers: { ...AUTH, 'content-type': 'application/json' },
-    body: JSON.stringify({ taskId, status, at }),
+    body: JSON.stringify({ taskId, status, at, ...extra }),
   });
 }
 
@@ -47,17 +53,18 @@ async function tasks(base: string): Promise<unknown> {
 }
 
 const EXPECTED = [
-  { id: 't1', status: 'running', updatedAt: T1 },
+  { id: 't1', status: 'running', updatedAt: T1, title: 'Fix login', agent: 'claude-code', note: 'started' },
   { id: 't2', status: 'queued', updatedAt: T0 },
 ];
 
 async function writeTasks(base: string): Promise<void> {
-  for (const [taskId, status, at] of [
-    ['t1', 'queued', T0],
+  const reports: [string, string, string, Record<string, string>?][] = [
+    ['t1', 'queued', T0, { title: 'Fix login', agent: 'claude-code' }],
     ['t2', 'queued', T0],
-    ['t1', 'running', T1],
-  ]) {
-    expect((await report(base, taskId, status, at)).status).toBe(200);
+    ['t1', 'running', T1, { note: 'started' }],
+  ];
+  for (const [taskId, status, at, extra] of reports) {
+    expect((await report(base, taskId, status, at, extra)).status).toBe(200);
   }
 }
 

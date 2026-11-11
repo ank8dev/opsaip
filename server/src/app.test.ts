@@ -129,6 +129,32 @@ describe('POST /v1/reports', () => {
     expect(await tasks()).toEqual([{ id: 't1', status: 'queued', updatedAt: T0 }]);
   });
 
+  describe('optional title, agent and note', () => {
+    it('stores them and GET /v1/tasks returns them', async () => {
+      await start();
+      const created = await post(
+        JSON.stringify({ taskId: 't1', status: 'queued', at: T0, title: 'Fix login', agent: 'claude-code' }),
+      );
+      expect(created.status).toBe(200);
+      const waiting = await post(
+        JSON.stringify({ taskId: 't1', status: 'running', at: T1, note: 'Which branch?' }),
+      );
+      expect(await waiting.json()).toEqual({
+        task: { id: 't1', status: 'running', updatedAt: T1, title: 'Fix login', agent: 'claude-code', note: 'Which branch?' },
+      });
+      expect(await tasks()).toEqual([
+        { id: 't1', status: 'running', updatedAt: T1, title: 'Fix login', agent: 'claude-code', note: 'Which branch?' },
+      ]);
+    });
+
+    it('leaves out fields that are not set (no null in the JSON)', async () => {
+      await start();
+      await report('t1', 'queued', T0);
+      const res = await fetch(`${base}/v1/tasks`, { headers: AUTH });
+      expect(await res.text()).toBe(`{"tasks":[{"id":"t1","status":"queued","updatedAt":"${T0}"}]}`);
+    });
+  });
+
   describe('409 when the store rejects the report', () => {
     it('unknown task with a status other than queued', async () => {
       await start();
@@ -186,6 +212,11 @@ describe('POST /v1/reports', () => {
       ['a missing taskId', { status: 'queued', at: T0 }, 'taskId is missing'],
       ['an unknown status', { taskId: 't1', status: 'paused', at: T0 }, 'status must be one of'],
       ['a timestamp without offset', { taskId: 't1', status: 'queued', at: '2026-11-01T10:00:00' }, 'at must be'],
+      ['a title with status running', { taskId: 't1', status: 'running', at: T0, title: 'x' }, 'title is only allowed with status "queued"'],
+      ['a title over 200 characters', { taskId: 't1', status: 'queued', at: T0, title: 'x'.repeat(201) }, 'title must be at most 200 characters'],
+      ['an agent over 100 characters', { taskId: 't1', status: 'queued', at: T0, agent: 'x'.repeat(101) }, 'agent must be at most 100 characters'],
+      ['a note over 500 characters', { taskId: 't1', status: 'queued', at: T0, note: 'x'.repeat(501) }, 'note must be at most 500 characters'],
+      ['a null note', { taskId: 't1', status: 'queued', at: T0, note: null }, 'note must be a string'],
     ])('JSON that parseReport rejects: %s', async (_name, body, reason) => {
       await start();
       const res = await post(JSON.stringify(body));

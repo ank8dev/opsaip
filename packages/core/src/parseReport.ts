@@ -5,6 +5,10 @@ export type ParseReportResult = { ok: true; report: StatusReport } | { ok: false
 
 /** Longest taskId accepted, in UTF-16 code units (String.length). */
 export const MAX_TASK_ID_LENGTH = 200;
+/** Longest optional fields accepted, in UTF-16 code units (String.length). */
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_AGENT_LENGTH = 100;
+export const MAX_NOTE_LENGTH = 500;
 
 // The accepted ISO 8601 profile (the RFC 3339 one): full date, "T", time with
 // seconds, optional fraction, and an explicit offset. A timestamp without an
@@ -15,7 +19,10 @@ const ISO_TIMESTAMP =
 
 /**
  * Turn raw JSON from the network into a StatusReport, or say why it is not one.
- * Never throws. Fields other than taskId, status and at are ignored and not copied.
+ * Never throws. Required: taskId, status, at. Optional: title (only with
+ * status "queued"), agent, note; an optional field that is present must be a
+ * non-blank string within its length limit (null is not "absent", it is
+ * rejected). Any other field is ignored and not copied.
  * Reasons never echo the input values, so a hostile payload cannot flood logs.
  */
 export function parseReport(input: unknown): ParseReportResult {
@@ -23,17 +30,11 @@ export function parseReport(input: unknown): ParseReportResult {
     if (typeof input !== 'object' || input === null || Array.isArray(input)) {
       return fail('report must be an object');
     }
-    const { taskId, status, at } = input as Record<string, unknown>;
+    const { taskId, status, at, title, agent, note } = input as Record<string, unknown>;
 
     if (taskId === undefined) return fail('taskId is missing');
-    if (typeof taskId !== 'string') return fail('taskId must be a string');
-    if (taskId.length === 0) return fail('taskId must not be empty');
-    if (taskId.length > MAX_TASK_ID_LENGTH) {
-      return fail(`taskId must be at most ${MAX_TASK_ID_LENGTH} characters`);
-    }
-    // After the length check, so trim() never runs on an oversized string.
-    // The value itself is not trimmed: "  a " stays as sent.
-    if (taskId.trim().length === 0) return fail('taskId must not be only whitespace');
+    const taskIdProblem = textProblem('taskId', taskId, MAX_TASK_ID_LENGTH);
+    if (taskIdProblem !== undefined) return fail(taskIdProblem);
 
     if (status === undefined) return fail('status is missing');
     if (!isAgentTaskStatus(status)) {
@@ -46,13 +47,47 @@ export function parseReport(input: unknown): ParseReportResult {
       return fail('at must be an ISO 8601 timestamp like 2026-11-01T10:05:00Z');
     }
 
-    // Build a new object: only the three known fields, never the input itself.
-    return { ok: true, report: { taskId, status, at } };
+    if (title !== undefined) {
+      if (status !== 'queued') return fail('title is only allowed with status "queued"');
+      const problem = textProblem('title', title, MAX_TITLE_LENGTH);
+      if (problem !== undefined) return fail(problem);
+    }
+    if (agent !== undefined) {
+      const problem = textProblem('agent', agent, MAX_AGENT_LENGTH);
+      if (problem !== undefined) return fail(problem);
+    }
+    if (note !== undefined) {
+      const problem = textProblem('note', note, MAX_NOTE_LENGTH);
+      if (problem !== undefined) return fail(problem);
+    }
+
+    // Build a new object: only the known fields, never the input itself.
+    // An absent optional field stays absent (no `title: undefined` key).
+    // The casts are safe: textProblem returned undefined, so each is a string.
+    const report: StatusReport = { taskId: taskId as string, status, at };
+    if (title !== undefined) report.title = title as string;
+    if (agent !== undefined) report.agent = agent as string;
+    if (note !== undefined) report.note = note as string;
+    return { ok: true, report };
   } catch {
     // A getter or Proxy on the input threw. JSON.parse never makes those,
     // but the parameter is `unknown`, so reject instead of throwing.
     return fail('report could not be read');
   }
+}
+
+/**
+ * Why `value` is not an acceptable text field, or undefined if it is: a string,
+ * not empty, at most `max` characters, not only whitespace. The value itself
+ * is never trimmed: "  a " stays as sent.
+ */
+function textProblem(name: string, value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return `${name} must be a string`;
+  if (value.length === 0) return `${name} must not be empty`;
+  if (value.length > max) return `${name} must be at most ${max} characters`;
+  // After the length check, so trim() never runs on an oversized string.
+  if (value.trim().length === 0) return `${name} must not be only whitespace`;
+  return undefined;
 }
 
 function fail(reason: string): ParseReportResult {
