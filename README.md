@@ -33,6 +33,8 @@ opsaip/
     core/         @opsaip/core — pure, UI-free logic shared by web and the server
                   (agent task statuses, applyReport, in-memory task store),
                   with Vitest tests
+    mcp/          @opsaip/mcp — a stdio MCP server with start_task and update_status, so
+                  Claude Code, Codex and other MCP clients report their work to the server
   server/         @opsaip/server — the self-hosted server, v0: an HTTP API that agents
                   report task statuses to (node:http, node:sqlite, @opsaip/core), with Vitest tests
   brand/          logo sources, SVG/PNG exports, Opsaip Display font, brand tokens
@@ -42,7 +44,7 @@ opsaip/
 
 - **`apps/desktop/`** — a desktop app: an Electron shell around the same `apps/web` build
   (like Claude desktop around claude.ai). No UI code of its own.
-- **`server/`, next steps** — the MCP endpoint agents report to, sync with
+- **`server/`, next steps** — sync with
   Linear / GitHub / Notion, Slack messaging, and the API the web app reads instead of mocks.
 
 ## Run the web app
@@ -111,6 +113,32 @@ server is upgraded on start, in one transaction; one from a newer server is refu
 Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
 On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is
 expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
+
+## Run the MCP server
+
+Agents report through MCP: `packages/mcp` is a stdio MCP server that the agent's MCP client
+starts. Run `npm install` in the repository once. It needs the Opsaip server running and these
+variables:
+
+| Variable       | Meaning                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `OPSAIP_URL`   | The Opsaip server, e.g. `http://127.0.0.1:4100`. No `user:password@` part.              |
+| `OPSAIP_TOKEN` | The server's access token. Never logged or returned to the agent.                        |
+
+The command for the MCP client (an absolute path, so it works from any folder):
+
+```bash
+node /path/to/opsaip/packages/mcp/bin/opsaip-mcp.mjs
+```
+
+| Tool                                 | What it does                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `start_task(title)`                  | Creates a task id, reports `queued` (with the title) then `running`, returns the id.   |
+| `update_status(taskId, status, note?)` | Reports the new status; `note` is e.g. the question while `waiting_on_human`.       |
+
+Each report's `agent` is the name the MCP client gives when it connects. A server
+that is down, a wrong token or a rejected report comes back to the agent as a tool error that
+says what went wrong.
 
 ## Design
 
