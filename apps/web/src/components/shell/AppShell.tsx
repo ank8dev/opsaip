@@ -18,6 +18,8 @@ export function AppShell() {
 
   return (
     <section ref={rootRef} className="op-home" aria-label="Opsaip home">
+      {/* Desktop app only (CSS): the strip that drags the window. */}
+      <div className="op-drag" aria-hidden="true" />
       <Sidebar />
 
       <motion.button
