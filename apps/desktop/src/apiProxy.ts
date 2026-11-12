@@ -7,10 +7,20 @@
 //             Content-Type headers (no cookies, no Origin, nothing added);
 //   response: status, body and Content-Type only (no Set-Cookie).
 // A redirect is an error: following it could send the token to another host.
+// Chromium's network stack adds headers of its own (User-Agent, Accept-Language,
+// Sec-Fetch-*); keepSentHeaders removes them, leaving only what the transport needs.
 import { APP_HOST, APP_SCHEME, isApiPath } from './appFiles.js';
 
 export const FORWARDED_REQUEST_HEADERS = ['authorization', 'content-type'] as const;
 export const FORWARDED_RESPONSE_HEADERS = ['content-type'] as const;
+/** What may reach the server: the forwarded headers plus the transport's own. */
+export const SENT_REQUEST_HEADERS = [
+  ...FORWARDED_REQUEST_HEADERS,
+  'host',
+  'connection',
+  'content-length',
+  'accept-encoding',
+] as const;
 export const ALLOWED_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 /** The server takes 16 KB; this only stops a runaway page from buffering a huge body. */
 export const MAX_BODY_BYTES = 1024 * 1024;
@@ -108,4 +118,17 @@ function jsonError(status: number, error: string): Response {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+/**
+ * The headers a forwarded request may carry when it leaves the app: run on the
+ * final header set (Electron's onBeforeSendHeaders). Names match in any case;
+ * everything else is dropped, so the server learns nothing about this Mac.
+ */
+export function keepSentHeaders(headers: Record<string, string>): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if ((SENT_REQUEST_HEADERS as readonly string[]).includes(name.toLowerCase())) kept[name] = value;
+  }
+  return kept;
 }

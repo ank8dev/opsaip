@@ -95,8 +95,9 @@ for the whole Mac.
 The app is ad-hoc signed (Apple Silicon runs nothing unsigned) but not notarized, so macOS cannot
 tell who made it.
 
-To use it with your Opsaip server, add `config.json` as described below. The web app has no
-screen to enter the access token yet, so until it does, the desktop app shows the Demo team.
+To use it with your Opsaip server, add `config.json` as described below, then click **Demo** in the
+top-right corner, paste the access token under **Server** and press **Connect**. As in a browser
+tab, the token is kept only while the window is open.
 
 ## Run the desktop app (development)
 
@@ -125,6 +126,9 @@ How it stays locked down:
   to `serverUrl` with only the `Authorization` and `Content-Type` headers, returns the status,
   body and `Content-Type`, and refuses redirects. That server is the only network address the
   app reaches. Nothing under `/v1` is served from disk.
+- The forwarded request carries nothing else: the app also removes the headers Chromium adds on
+  its own (`User-Agent`, `Accept-Language`, `Sec-Fetch-*`). Only transport headers remain
+  (`Host`, `Connection`, `Content-Length`, `Accept-Encoding`).
 - Node.js is off in the page (`contextIsolation`, `sandbox`, no `nodeIntegration`, no preload).
   The only web permission granted is writing to the clipboard.
 - Links that leave the app (`https:`, `http:`, `mailto:`) open in the default browser or mail
