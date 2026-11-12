@@ -146,15 +146,19 @@ npm run server                                 # http://127.0.0.1:4100
 | `OPSAIP_PORT` | `4100`             | Port, 1–65535. A bad value stops the server at startup.                                  |
 | `OPSAIP_DB`   | `./data/opsaip.db` | SQLite file, created if missing. Relative to the working directory: `server/` when started with `npm run server`, so `server/data/opsaip.db` (git-ignored). |
 | `OPSAIP_TOKEN` | none, required    | Access token: at least 32 visible ASCII characters, no spaces. The server never logs it. |
+| `OPSAIP_WEB_DIR` | `apps/web/dist` of this repository | The web app build the server serves at `/`. If it is missing, the server still starts and says how to build it. |
 
-Endpoints (v0). Every request except `GET /healthz` must send `Authorization: Bearer <token>`;
-a missing or wrong token gets 401. Errors are JSON: `{ "error": "<reason>" }`.
+Endpoints (v0). Every request must send `Authorization: Bearer <token>`, except `GET /healthz`
+and the web app files (`/`, `/index.html`, `/favicon.svg`, `/assets/<file>`); a missing or wrong
+token gets 401. The list of public paths lives in `server/src/auth/requestGuard.ts`. Errors are
+JSON: `{ "error": "<reason>" }`.
 
 | Request             | Response                                                                                                                           |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
+| `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
 
 A status report (the body of `POST /v1/reports`):
 
@@ -233,9 +237,10 @@ forward `/v1` to the server at `OPSAIP_URL` (default `http://127.0.0.1:4100`). T
 
 To see your server's tasks in the web app:
 
-1. Start the server (see [Run the server](#run-the-server)).
-2. In another shell: `npm run dev` (add `OPSAIP_URL=...` if the server is not on `127.0.0.1:4100`).
-3. Open the app, click **Demo** in the top-right corner, paste the token under **Server** and press
+1. `npm run build`, then start the server (see [Run the server](#run-the-server)). It serves the
+   app at `http://127.0.0.1:4100/`. While working on the app, use `npm run dev` instead: it forwards
+   `/v1` to the server (add `OPSAIP_URL=...` if the server is not on `127.0.0.1:4100`).
+2. Open the app, click **Demo** in the top-right corner, paste the token under **Server** and press
    **Connect**. The badge shows **Live**, **Connecting** or **Offline**; **Disconnect** goes back to Demo.
 
 ## License

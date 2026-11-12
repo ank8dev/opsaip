@@ -1,5 +1,6 @@
 // Entry point: `npm run server` from the repository root.
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
 import { ConfigError, loadConfig, type Config } from './config';
@@ -25,8 +26,9 @@ try {
 }
 
 // config.token is passed on and never logged; the log lines below print
-// only the address and the database path.
-const server = createApp({ store: createSqliteTaskStore(db), token: config.token });
+// only the address, the database path and the web app folder.
+const webDir = resolve(config.webDir);
+const server = createApp({ store: createSqliteTaskStore(db), token: config.token, webDir });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
@@ -38,6 +40,11 @@ server.on('error', (error) => {
 
 server.listen(port, host, () => {
   console.log(`opsaip: server listening on ${url}, database ${dbPath}`);
+  if (existsSync(join(webDir, 'index.html'))) {
+    console.log(`opsaip: web app at ${url}/ (from ${webDir})`);
+  } else {
+    console.log(`opsaip: no web app build in ${webDir}; run "npm run build" to serve it at ${url}/`);
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
