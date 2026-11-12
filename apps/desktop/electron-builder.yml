@@ -1,0 +1,51 @@
+# Packaging for macOS: one .dmg per architecture (arm64, x64).
+# Build on a Mac: `npm run desktop:dist` from the repository root.
+# Output: apps/desktop/release/Opsaip-<version>-<arch>.dmg
+appId: dev.opsaip.desktop
+productName: Opsaip
+copyright: Opsaip contributors, AGPL-3.0-only
+
+directories:
+  output: release
+
+# The app: the compiled main process only (dist/). No runtime dependencies.
+files:
+  - dist/**/*
+  - package.json
+# The apps/web build, read at Contents/Resources/web (see webRoot() in main.ts).
+extraResources:
+  - from: ../web/dist
+    to: web
+asar: true
+npmRebuild: false
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools
+  # The plain brand symbol for the alpha; converted to .icns by electron-builder.
+  icon: ../../brand/png/symbol-on-dark/symbol-on-dark-1024.png
+  # No Apple Developer ID for the alpha. "-" is an ad-hoc signature: Apple
+  # Silicon refuses to run unsigned code at all ("damaged"), so null is not an
+  # option. Hardened runtime needs a real identity, so it is off.
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  sign: false
+
+# Electron fuses, flipped in the binary before signing.
+electronFuses:
+  runAsNode: false                             # no ELECTRON_RUN_AS_NODE: not a plain Node.js
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false  # ignore NODE_OPTIONS
+  enableNodeCliInspectArguments: false         # ignore --inspect
+  enableEmbeddedAsarIntegrityValidation: true  # refuse a modified app.asar
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false      # the app uses app://, never file://
+
+publish: null

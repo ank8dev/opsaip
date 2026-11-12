@@ -43,7 +43,7 @@ opsaip/
 
 ### Planned
 
-- **`apps/desktop/`, next steps** — a `.dmg` for Intel and Apple Silicon.
+- **`apps/desktop/`, next steps** — a signed and notarized build, and a proper macOS icon.
 - **`server/`, next steps** — sync with
   Linear / GitHub / Notion, Slack messaging, and the API the web app reads instead of mocks.
 
@@ -60,6 +60,43 @@ npm test             # run the tests of every workspace
 ```
 
 Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.
+
+## Install the desktop app (macOS, alpha)
+
+The alpha is not signed with an Apple Developer ID, so macOS asks you to confirm it once.
+
+1. **Get the `.dmg`.** On GitHub: **Actions → desktop**, open the latest green run, and download
+   **opsaip-desktop-dmg** under *Artifacts* (needs a GitHub account; kept 30 days). No recent run?
+   Click **Run workflow** on `main`. Or build it on a Mac yourself: `npm run desktop:dist` puts both
+   files in `apps/desktop/release/`.
+2. **Pick your file.** Apple menu → **About This Mac**. "Chip: Apple M…" →
+   `Opsaip-<version>-arm64.dmg`. "Processor: Intel" → `Opsaip-<version>-x64.dmg`.
+3. **Install.** Open the `.dmg` and drag **Opsaip** into **Applications**.
+4. **Open it the first time:**
+   - **macOS 15 Sequoia or later:** double-click Opsaip; macOS says it cannot verify it — click
+     **Done**. Open **System Settings → Privacy & Security**, scroll to *Security*, click
+     **Open Anyway** next to "Opsaip was blocked…", and confirm with your password.
+   - **macOS 14 Sonoma or earlier:** in Applications, right-click (or Control-click) **Opsaip** →
+     **Open** → **Open**.
+
+   After that, Opsaip opens normally. Right-click → Open no longer works from macOS 15 on; Apple
+   removed it.
+
+If macOS says the app **"is damaged and can't be opened"**, download it again first. If it still
+says so, remove the download flag from this one app in Terminal, then open it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Opsaip.app
+```
+
+Do this only for a `.dmg` from this repository's own workflow runs, and never turn off Gatekeeper
+for the whole Mac.
+
+The app is ad-hoc signed (Apple Silicon runs nothing unsigned) but not notarized, so macOS cannot
+tell who made it.
+
+To use it with your Opsaip server, add `config.json` as described below. The web app has no
+screen to enter the access token yet, so until it does, the desktop app shows the Demo team.
 
 ## Run the desktop app (development)
 

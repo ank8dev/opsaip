@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+/apps/desktop/release/
 *.tsbuildinfo
 
 # Server data (SQLite). Anchored: a bare "data/" would also hide apps/web/src/data/

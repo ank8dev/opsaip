@@ -1,0 +1,124 @@
+name: desktop
+
+# Builds the macOS app as two .dmg files (Apple Silicon and Intel), checks
+# them, runs the Apple Silicon app against a real Opsaip server, and uploads
+# the .dmg files as workflow artifacts (no release, nothing published).
+# Not a required check: it runs on macOS, slower and costlier than ci.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - apps/web/**
+      - server/**
+      - packages/core/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/desktop.yml
+      - .github/scripts/desktop-*.mjs
+
+permissions: {}
+
+concurrency:
+  group: desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    name: dmg
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Desktop tests
+        run: npm test --workspace @opsaip/desktop
+
+      - name: Build the .dmg files
+        env:
+          # electron-builder skips signing in pull requests unless this is set.
+          # Safe here: the signature is ad-hoc ("-"); there is no certificate or secret.
+          CSC_FOR_PULL_REQUEST: "true"
+        run: npm run desktop:dist
+
+      - name: Check architecture, signature, web build and disk images
+        working-directory: apps/desktop/release
+        run: |
+          set -euo pipefail
+          ls -la
+          for pair in mac-arm64:arm64 mac:x86_64; do
+            app="${pair%%:*}/Opsaip.app"
+            arch="${pair##*:}"
+            echo "== $app"
+            [ "$(lipo -archs "$app/Contents/MacOS/Opsaip")" = "$arch" ]
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | grep 'Signature=adhoc'
+            test -f "$app/Contents/Resources/web/index.html"
+          done
+          for arch in arm64 x64; do
+            dmg=$(ls Opsaip-*-"$arch".dmg)
+            hdiutil verify "$dmg"
+          done
+
+      - name: Check Electron fuses
+        run: node .github/scripts/desktop-fuses.mjs apps/desktop/release/mac-arm64/Opsaip.app apps/desktop/release/mac/Opsaip.app
+
+      - name: Smoke test (Apple Silicon app + real server)
+        run: |
+          set -euo pipefail
+          export OPSAIP_TOKEN="$(openssl rand -hex 32)"
+          export SMOKE_TASK_TITLE="Desktop smoke test ${GITHUB_RUN_ID}"
+          export SMOKE_SCREENSHOT="$RUNNER_TEMP/desktop-smoke.png"
+          export CDP_PORT=9222
+
+          OPSAIP_PORT=4100 OPSAIP_DB="$RUNNER_TEMP/smoke.db" npm run server > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 60); do curl -sf http://127.0.0.1:4100/healthz > /dev/null && break; sleep 0.5; done
+          report() {
+            curl -sf -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
+              -d "$1" http://127.0.0.1:4100/v1/reports > /dev/null
+          }
+          report "{\"taskId\":\"smoke-1\",\"status\":\"queued\",\"at\":\"2026-01-01T10:00:00Z\",\"title\":\"$SMOKE_TASK_TITLE\"}"
+          report '{"taskId":"smoke-1","status":"running","at":"2026-01-01T10:00:30Z"}'
+          report '{"taskId":"smoke-1","status":"waiting_on_human","at":"2026-01-01T10:01:00Z","note":"Approve?"}'
+
+          config_dir="$HOME/Library/Application Support/Opsaip"
+          mkdir -p "$config_dir"
+          echo '{ "serverUrl": "http://127.0.0.1:4100" }' > "$config_dir/config.json"
+
+          apps/desktop/release/mac-arm64/Opsaip.app/Contents/MacOS/Opsaip \
+            --remote-debugging-port="$CDP_PORT" > "$RUNNER_TEMP/app.log" 2>&1 &
+          app_pid=$!
+          status=0
+          node .github/scripts/desktop-smoke.mjs || status=$?
+          kill "$app_pid" || true
+          if [ "$status" -ne 0 ]; then
+            echo "--- app log"; cat "$RUNNER_TEMP/app.log"
+            echo "--- server log"; cat "$RUNNER_TEMP/server.log"
+          fi
+          exit "$status"
+
+      - name: Upload the .dmg files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: opsaip-desktop-dmg
+          path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload the smoke test screenshot
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-smoke-screenshot
+          path: ${{ runner.temp }}/desktop-smoke.png
+          if-no-files-found: ignore
+          retention-days: 30

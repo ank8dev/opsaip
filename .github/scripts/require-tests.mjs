@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { findMatches, globToRegExp } from "./globs.mjs";
 
 // Areas that must come with tests. UI components and apps/mobile are exempt.
-const TESTED_AREAS = ["packages/**", "apps/web/src/data/**", "server/**"].map(
+const TESTED_AREAS = ["packages/**", "apps/web/src/data/**", "apps/desktop/**", "server/**"].map(
   (glob) => ({ glob, re: globToRegExp(glob) }),
 );
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/i;
