@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_BODY_BYTES, forwardApiRequest, planApiRequest, type FetchFn } from './apiProxy.js';
+import { MAX_BODY_BYTES, forwardApiRequest, keepSentHeaders, planApiRequest, type FetchFn } from './apiProxy.js';
 
 const BASE = 'https://opsaip.example.com/';
 const TOKEN = 'Bearer ' + 'a'.repeat(64);
@@ -173,5 +173,40 @@ describe('forwardApiRequest', () => {
     expect(res.headers.get('content-type')).toBe('application/json');
     expect((await res.json()) as unknown).toHaveProperty('error');
     expect(server.calls).toHaveLength(0);
+  });
+});
+
+describe('keepSentHeaders', () => {
+  it('keeps the forwarded headers and the transport ones, in any case', () => {
+    const kept = {
+      Authorization: TOKEN,
+      'Content-Type': 'application/json',
+      Host: '127.0.0.1:4100',
+      Connection: 'keep-alive',
+      'Content-Length': '7',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+    };
+    expect(keepSentHeaders(kept)).toEqual(kept);
+  });
+
+  it("drops Chromium's own headers that tell the server about this Mac", () => {
+    // What a real forwarded request carried before this filter (Electron 45, see the PR).
+    const sent = keepSentHeaders({
+      authorization: TOKEN,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Opsaip/0.1.0 Chrome/156 Electron/45.3.1',
+      'Accept-Language': 'en-US',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Dest': 'empty',
+      'sec-ch-ua': '"Chromium";v="156"',
+      Cookie: 'sid=1',
+      Origin: 'app://opsaip',
+      Referer: 'app://opsaip/index.html',
+    });
+    expect(sent).toEqual({ authorization: TOKEN });
+  });
+
+  it('returns nothing for nothing', () => {
+    expect(keepSentHeaders({})).toEqual({});
   });
 });

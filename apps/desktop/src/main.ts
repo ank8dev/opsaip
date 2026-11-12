@@ -14,7 +14,7 @@ import {
   shell,
   type Session,
 } from 'electron';
-import { forwardApiRequest } from './apiProxy.js';
+import { forwardApiRequest, keepSentHeaders } from './apiProxy.js';
 import { APP_SCHEME, START_URL, fileHeaders, isApiPath, resolveAppFile } from './appFiles.js';
 import { parseConfig, type DesktopConfig } from './config.js';
 import {
@@ -69,6 +69,10 @@ function createApiSession(serverBase: string | null): Session {
   const ses = session.fromPartition('opsaip-api');
   ses.webRequest.onBeforeRequest((details, callback) => {
     callback({ cancel: !isAllowedApiRequest(details.url, serverBase) });
+  });
+  // Drop what Chromium adds on its own (User-Agent, Accept-Language, Sec-Fetch-*).
+  ses.webRequest.onBeforeSendHeaders((details, callback) => {
+    callback({ requestHeaders: keepSentHeaders(details.requestHeaders) });
   });
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   return ses;
