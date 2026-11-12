@@ -17,9 +17,10 @@ Agents open PRs. Most PRs merge on their own. PRs that touch sensitive paths wai
 | Part | Rule |
 | --- | --- |
 | `checks` | `npm ci`, typecheck, tests (`apps/web`, `packages/core`), web build. |
-| `tests-required` | If a `ts/tsx/js/jsx/mjs/cjs` file changes under `packages/**`, `apps/web/src/data/**` or `server/**`, at least one test file (`*.test.*`, `*.spec.*`, `__tests__/`) must change too. UI components and `apps/mobile` are exempt. |
+| `tests-required` | If a `ts/tsx/js/jsx/mjs/cjs` file changes under `packages/**`, `apps/web/src/data/**`, `apps/desktop/**` or `server/**`, at least one test file (`*.test.*`, `*.spec.*`, `__tests__/`) must change too. UI components and `apps/mobile` are exempt. |
 | `self-review` | The PR description has a non-empty `## Self-review` section: what was checked, known risks, what tests do not cover. |
 | `gate` | The PR must not touch any path in [`.github/SECURITY_PATHS`](../.github/SECURITY_PATHS). Renames count (old path too). |
+| `desktop` (not required) | Runs on PRs that touch the desktop app, the web app, the server or dependencies, and on demand (Actions → desktop → Run workflow). On macOS: builds the two `.dmg` files, checks architecture, ad-hoc signature and Electron fuses, runs the Apple Silicon app against a real server, and uploads the `.dmg` files as artifacts. |
 | `auto-merge` | Only for PRs from this repo (not forks), not drafts, and only if the gate result is for the current head commit. |
 
 ## Why it is safe

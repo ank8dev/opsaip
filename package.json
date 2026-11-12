@@ -14,6 +14,7 @@
     "build": "npm run build --workspace @opsaip/web",
     "preview": "npm run preview --workspace @opsaip/web --",
     "desktop": "npm run build && npm run start --workspace @opsaip/desktop",
+    "desktop:dist": "npm run build && npm run dist --workspace @opsaip/desktop",
     "server": "npm run start --workspace @opsaip/server",
     "test": "npm test --workspaces --if-present"
   },
