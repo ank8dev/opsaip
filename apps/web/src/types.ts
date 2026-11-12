@@ -24,7 +24,7 @@ export interface Task {
   tool: string;
   status: TaskStatus;
   priority?: Priority;
-  owner: string;          // Person.id, or 'me' for tasks you started
+  owner: string;          // Person.id, 'me' for tasks you started, '' if unknown (server tasks)
   source: string;         // the agent: "Claude Code", "Codex", "Opsaip"
   detail: string;
   impact?: string;
