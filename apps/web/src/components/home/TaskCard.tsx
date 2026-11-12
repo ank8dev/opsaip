@@ -51,12 +51,12 @@ export function TaskCard({ task }: { task: AnyTask }) {
             {task.status}
           </span>
         </div>
-        <div className="op-card-meta">{[owner?.name ?? 'You', task.tool, task.detail].filter(Boolean).join(' · ')}</div>
+        <div className="op-card-meta">{[isLocal(task) ? 'You' : owner?.name, task.tool, task.detail].filter(Boolean).join(' · ')}</div>
         <div className="op-scroll op-card-scroll">
           {!isLocal(task) && <LinkedItems task={task} />}
           <Chat messages={messagesFor(task)} you={owner?.name ?? 'You'} agent={task.source || 'Agent'} />
           <div className="op-chat-foot">
-            {isLocal(task) ? 'Started here · not saved yet' : `Exported from ${task.source} · read only`}
+            {isLocal(task) ? 'Started here · not saved yet' : task.source ? `Exported from ${task.source} · read only` : 'Read only'}
           </div>
         </div>
       </div>

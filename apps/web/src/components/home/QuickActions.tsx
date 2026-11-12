@@ -6,10 +6,11 @@ import { useUi } from '../../state/ui';
 
 type Action = { label: string; main?: boolean; run: () => void };
 
-/** The next steps for the open task, next to the mode button. Preview only. */
+/** The next steps for the open task, next to the mode button. Preview only, so none for server tasks. */
 export function QuickActions({ task, prefill }: { task: AnyTask; prefill: (text: string) => void }) {
-  const { people, changeTask } = useWorkspace();
+  const { people, changeTask, readOnly } = useWorkspace();
   const { flashHint } = useUi();
+  if (readOnly && !isLocal(task)) return null;
   const owner = isLocal(task) ? undefined : people[task.owner];
   const fn = owner ? firstName(owner.name) : 'them';
   const agent = task.source ? (owner ? `${fn}’s ${task.source}` : task.source) : 'the agent';

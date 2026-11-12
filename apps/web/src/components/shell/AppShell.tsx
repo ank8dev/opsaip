@@ -7,6 +7,7 @@ import { Home } from '../home/Home';
 import { Settings } from '../settings/Settings';
 import { Baton } from '../conductor/Baton';
 import { SettingsIcon } from '../common/Icons';
+import { ConnectionBadge } from './ConnectionBadge';
 import './AppShell.css';
 
 /** The whole app: sidebar | main column, plus the baton floating over both. */
@@ -31,6 +32,7 @@ export function AppShell() {
       >
         <SettingsIcon />
       </motion.button>
+      <ConnectionBadge />
       <motion.button
         type="button"
         className="op-corner-btn op-theme-btn"

@@ -194,6 +194,13 @@ The app always calls relative paths (`/v1/...`), never a host. `npm run dev` and
 forward `/v1` to the server at `OPSAIP_URL` (default `http://127.0.0.1:4100`). The token is kept in
 `sessionStorage` (one tab, gone when it closes) and sent only in the `Authorization` header.
 
+To see your server's tasks in the web app:
+
+1. Start the server (see [Run the server](#run-the-server)).
+2. In another shell: `npm run dev` (add `OPSAIP_URL=...` if the server is not on `127.0.0.1:4100`).
+3. Open the app, click **Demo** in the top-right corner, paste the token under **Server** and press
+   **Connect**. The badge shows **Live**, **Connecting** or **Offline**; **Disconnect** goes back to Demo.
+
 ## License
 
 [GNU AGPL v3](LICENSE). You can use, self-host, change and share Opsaip freely. If you run a

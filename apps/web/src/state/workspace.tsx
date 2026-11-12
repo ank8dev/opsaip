@@ -12,10 +12,7 @@ import { byImportance, byStatus, isImportant, mapState, peopleById, type TrayLev
 import {
   clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
-import { startPoller, type LiveState } from '../data/poller';
-
-/** Where the data on screen comes from: Demo, or the server (connecting, live, offline). */
-export type DataSource = { status: 'demo' } | LiveState;
+import { startPoller, type DataSource, type LiveState } from '../data/poller';
 
 type SyncFlag = 'conflict' | 'suggested' | '';
 
@@ -31,7 +28,7 @@ interface WorkspaceValue {
   people: Record<string, Person>;
   /** Tasks from the workspace, with preview edits applied (Demo only). */
   tasks: Task[];
-  /** Tasks started from this page, newest first. */
+  /** Tasks started from this page, newest first. Empty while showing server data. */
   localTasks: LocalTask[];
   /** Local tasks first, then everything else by status. */
   allTasks: AnyTask[];
@@ -117,17 +114,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   localIdsRef.current = localIds;
   const isLocalId = (id: string) => localIdsRef.current.has(id);
 
+  // Preview tasks started here are sample-data play: they are not shown next
+  // to real server tasks. So on screen, local and server ids never meet.
+  const shownLocal = useMemo(() => (readOnly ? [] : localTasks), [readOnly, localTasks]);
+
   const people = useMemo(() => peopleById(ws.team), [ws.team]);
   const tasks = useMemo(
     () =>
-      ws.activity
-        // A server task whose id equals a local one is hidden while both exist: ids must be unique.
-        .filter((t) => !localIds.has(t.id))
-        // Preview edits apply to sample data only, never on top of server data.
-        .map((t) => (!readOnly && taskPatches[t.id] ? { ...t, ...taskPatches[t.id] } : t)),
-    [ws.activity, taskPatches, localIds, readOnly],
+      // Preview edits apply to sample data only, never on top of server data.
+      ws.activity.map((t) => (!readOnly && taskPatches[t.id] ? { ...t, ...taskPatches[t.id] } : t)),
+    [ws.activity, taskPatches, readOnly],
   );
-  const allTasks = useMemo<AnyTask[]>(() => [...localTasks, ...tasks.slice().sort(byStatus)], [localTasks, tasks]);
+  const allTasks = useMemo<AnyTask[]>(() => [...shownLocal, ...tasks.slice().sort(byStatus)], [shownLocal, tasks]);
 
   const findTask = useCallback((id: string | null | undefined) => allTasks.find((t) => t.id === id) ?? null, [allTasks]);
 
@@ -166,8 +164,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const decisionTasks = useCallback(() => {
     const needs = (t: AnyTask) =>
       t.status === 'Needs you' || (!isLocal(t) && t.status !== 'Done' && syncFlag(t.id) === 'conflict');
-    return [...localTasks.filter(needs), ...tasks.filter(needs)].sort(byImportance);
-  }, [localTasks, tasks, syncFlag]);
+    return [...shownLocal.filter(needs), ...tasks.filter(needs)].sort(byImportance);
+  }, [shownLocal, tasks, syncFlag]);
 
   const attentionTasks = useCallback(
     (level: TrayLevel) => decisionTasks().filter((t) => isImportant(t, level)),
@@ -253,7 +251,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value: WorkspaceValue = {
-    ws, source, readOnly, connect, disconnect, people, tasks, localTasks, allTasks, findTask, linksFor, syncFlag,
+    ws, source, readOnly, connect, disconnect, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
     linkNote: (id) => linkNotes[id] ?? '',
     messagesFor, decisionTasks, attentionTasks,
     changeTask, addLocalTask, addMessage, resolveConflict, linkSuggestion, dismissSuggestion,
