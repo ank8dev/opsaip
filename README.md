@@ -152,9 +152,15 @@ says what went wrong.
 
 ## Data
 
-`apps/web/src/data/source.ts` is the single place data comes from. Today it returns the mocks in
-`apps/web/src/mocks/`; when the server exists, it will fetch the same shapes from its API
-(types in `apps/web/src/types.ts`).
+`apps/web/src/data/source.ts` is the single place data comes from:
+
+- **Demo** — no server connection saved: the sample team in `apps/web/src/mocks/`.
+- **Server** — an access token saved in this browser tab: the app polls `GET /v1/tasks` every 5 s
+  and shows only those tasks, read-only. Team, MCP and Repo are empty until the server has them.
+
+The app always calls relative paths (`/v1/...`), never a host. `npm run dev` and `npm run preview`
+forward `/v1` to the server at `OPSAIP_URL` (default `http://127.0.0.1:4100`). The token is kept in
+`sessionStorage` (one tab, gone when it closes) and sent only in the `Authorization` header.
 
 ## License
 

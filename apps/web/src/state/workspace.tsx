@@ -1,19 +1,35 @@
 // Workspace data plus the preview edits made on this page (approve, retry,
 // link a suggestion…). Edits live in memory only: nothing is written anywhere.
-// When the server exists, these actions become API calls.
+//
+// Data comes from data/source.ts: the sample team (Demo), or the Opsaip
+// server's tasks, polled every few seconds once a token is saved. Server
+// data is read-only here: preview edits are not applied on top of it.
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnyTask, ChatMessage, Link, LocalTask, Person, Task, ToolName, Workspace } from '../types';
 import { isLocal } from '../types';
 import { byImportance, byStatus, isImportant, mapState, peopleById, type TrayLevel } from '../data/selectors';
-import { loadWorkspace } from '../data/source';
+import {
+  clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
+} from '../data/source';
+import { startPoller, type LiveState } from '../data/poller';
+
+/** Where the data on screen comes from: Demo, or the server (connecting, live, offline). */
+export type DataSource = { status: 'demo' } | LiveState;
 
 type SyncFlag = 'conflict' | 'suggested' | '';
 
 interface WorkspaceValue {
   ws: Workspace;
+  source: DataSource;
+  /** True while showing server data: actions must not pretend to change it. */
+  readOnly: boolean;
+  /** Save the token and start polling. Returns a problem to show, or undefined. */
+  connect: (token: string) => string | undefined;
+  /** Forget the token and go back to Demo. */
+  disconnect: () => void;
   people: Record<string, Person>;
-  /** Tasks from the workspace, with preview edits applied. */
+  /** Tasks from the workspace, with preview edits applied (Demo only). */
   tasks: Task[];
   /** Tasks started from this page, newest first. */
   localTasks: LocalTask[];
@@ -42,20 +58,74 @@ const TOOL_ORDER: Record<ToolName, number> = { Linear: 0, GitHub: 1, Notion: 2 }
 
 /** Tasks started from this page get ids like "local-3". */
 export const LOCAL_PREFIX = 'local-';
-const isLocalId = (id: string) => id.startsWith(LOCAL_PREFIX);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [ws] = useState(loadWorkspace);
+  const [demo] = useState(loadWorkspace);
+  const [connection, setConnection] = useState<Connection | null>(() => loadConnection());
+  const [live, setLive] = useState<LiveState | null>(null);
+
+  useEffect(() => {
+    if (connection === null) return;
+    const poller = startPoller({
+      fetchTasks: (signal) => fetchTasks(connection.token, signal),
+      onState: setLive,
+      isHidden: () => document.hidden,
+    });
+    const onVisibility = () => {
+      if (!document.hidden) poller.wake();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      poller.stop();
+    };
+  }, [connection]);
+
+  const source: DataSource = connection === null ? { status: 'demo' } : (live ?? { status: 'connecting' });
+  const readOnly = source.status !== 'demo';
+  const serverTasks = source.status === 'live' || source.status === 'offline' ? source.tasks : null;
+  const ws = useMemo(
+    () => (readOnly ? serverWorkspace(serverTasks ?? []) : demo),
+    [readOnly, serverTasks, demo],
+  );
+
+  const connect = useCallback((token: string) => {
+    const saved = saveConnection(token);
+    if (!saved.ok) return saved.problem;
+    setLive(null);
+    setConnection(saved.connection);
+    return undefined;
+  }, []);
+
+  const disconnect = useCallback(() => {
+    clearConnection();
+    setLive(null);
+    setConnection(null);
+  }, []);
+
   const [taskPatches, setTaskPatches] = useState<Record<string, Partial<Task>>>({});
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
   const [sentMessages, setSentMessages] = useState<Record<string, ChatMessage[]>>({});
   const [linkPatches, setLinkPatches] = useState<Record<string, Partial<Link>>>({});
   const [linkNotes, setLinkNotes] = useState<Record<string, string>>({});
 
+  // A task is local only if it is in localTasks. Not by its id's prefix: a
+  // server task id can be any string, "local-3" included. The ref lets the
+  // actions below check it without being recreated on every change.
+  const localIds = useMemo(() => new Set(localTasks.map((t) => t.id)), [localTasks]);
+  const localIdsRef = useRef(localIds);
+  localIdsRef.current = localIds;
+  const isLocalId = (id: string) => localIdsRef.current.has(id);
+
   const people = useMemo(() => peopleById(ws.team), [ws.team]);
   const tasks = useMemo(
-    () => ws.activity.map((t) => (taskPatches[t.id] ? { ...t, ...taskPatches[t.id] } : t)),
-    [ws.activity, taskPatches],
+    () =>
+      ws.activity
+        // A server task whose id equals a local one is hidden while both exist: ids must be unique.
+        .filter((t) => !localIds.has(t.id))
+        // Preview edits apply to sample data only, never on top of server data.
+        .map((t) => (!readOnly && taskPatches[t.id] ? { ...t, ...taskPatches[t.id] } : t)),
+    [ws.activity, taskPatches, localIds, readOnly],
   );
   const allTasks = useMemo<AnyTask[]>(() => [...localTasks, ...tasks.slice().sort(byStatus)], [localTasks, tasks]);
 
@@ -183,7 +253,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value: WorkspaceValue = {
-    ws, people, tasks, localTasks, allTasks, findTask, linksFor, syncFlag,
+    ws, source, readOnly, connect, disconnect, people, tasks, localTasks, allTasks, findTask, linksFor, syncFlag,
     linkNote: (id) => linkNotes[id] ?? '',
     messagesFor, decisionTasks, attentionTasks,
     changeTask, addLocalTask, addMessage, resolveConflict, linkSuggestion, dismissSuggestion,
