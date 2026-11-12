@@ -1,14 +1,18 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { parseReport, type TaskStore } from '@opsaip/core';
-import { createTokenCheck, tokenProblem } from './accessToken';
+import { tokenProblem } from './auth/accessToken';
+import { createRequestGuard, webFileForPath } from './auth/requestGuard';
+import { readWebFile } from './webFiles';
 
 /** Largest request body accepted, in bytes (16 KB). */
 export const MAX_BODY_BYTES = 16 * 1024;
 
 export interface AppOptions {
   store: TaskStore;
-  /** Access token. Every request except /healthz must send "Authorization: Bearer <token>". */
+  /** Access token. Every request except the public paths must send "Authorization: Bearer <token>". */
   token: string;
+  /** The web app build (apps/web/dist). Without it, the web paths answer 404. */
+  webDir?: string;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
 }
@@ -21,19 +25,21 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  *   POST /v1/reports  JSON StatusReport -> 200 { task } | 400 | 409 | 413 | 415
  *   GET  /v1/tasks    200 { tasks }
  *   GET  /healthz     200 "ok"
+ *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
  *
  * Errors are JSON: { "error": "<reason>" }. Unknown path -> 404, known path
  * with another method -> 405 with an Allow header.
  *
- * Every path except /healthz needs the access token, checked first: before
- * routing (so a 404 does not reveal which paths exist) and before reading
- * the body. Missing or wrong token -> 401.
+ * Which paths need the access token is decided in auth/requestGuard.ts:
+ * all of them except /healthz and the web app files. It is checked first:
+ * before routing (so a 404 does not reveal which paths exist) and before
+ * reading the body. Missing or wrong token -> 401.
  */
-export function createApp({ store, token, logError = defaultLogError }: AppOptions): Server {
+export function createApp({ store, token, webDir, logError = defaultLogError }: AppOptions): Server {
   // Same rule as loadConfig, so no caller can start a server with a weak token.
   const problem = tokenProblem(token);
   if (problem !== undefined) throw new TypeError(problem);
-  const isAuthorized = createTokenCheck(token);
+  const mayProceed = createRequestGuard(token);
   const routes: Record<string, Record<string, Handler>> = {
     '/healthz': {
       GET: (_req, res) => sendText(res, 200, 'ok'),
@@ -89,7 +95,7 @@ export function createApp({ store, token, logError = defaultLogError }: AppOptio
     // "//host/path" as another host, so "//x/v1/tasks" would route to /v1/tasks.
     const path = (req.url ?? '/').split('?', 1)[0];
 
-    if (path !== '/healthz' && !isAuthorized(req.headers.authorization)) {
+    if (!mayProceed(path, req.headers.authorization)) {
       // Same answer for a missing and a wrong token. The body is not waited
       // for, and closing the connection stops reading the rest of it.
       return sendJson(res, 401, { error: 'missing or invalid access token' }, {
@@ -97,6 +103,9 @@ export function createApp({ store, token, logError = defaultLogError }: AppOptio
         connection: 'close',
       });
     }
+
+    const webFile = webFileForPath(path);
+    if (webFile !== undefined) return sendWebFile(req, res, webFile);
 
     const methods = Object.hasOwn(routes, path) ? routes[path] : undefined;
     if (methods === undefined) return sendJson(res, 404, { error: 'not found' });
@@ -109,6 +118,16 @@ export function createApp({ store, token, logError = defaultLogError }: AppOptio
       });
     }
     await handler(req, res);
+  }
+
+  async function sendWebFile(req: IncomingMessage, res: ServerResponse, file: string): Promise<void> {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return sendJson(res, 405, { error: 'method not allowed' }, { allow: 'GET, HEAD' });
+    }
+    const found = webDir === undefined ? undefined : await readWebFile(webDir, file);
+    if (found === undefined) return sendJson(res, 404, { error: 'not found' });
+    res.writeHead(200, { ...found.headers, 'content-length': found.body.length });
+    res.end(req.method === 'HEAD' ? undefined : found.body);
   }
 }
 

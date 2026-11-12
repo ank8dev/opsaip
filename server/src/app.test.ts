@@ -1,9 +1,13 @@
 import { once } from 'node:events';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { request, type IncomingMessage, type OutgoingHttpHeaders, type Server } from 'node:http';
 import { createTaskStore, type TaskStore } from '@opsaip/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, MAX_BODY_BYTES, type AppOptions } from './app';
+import { WEB_CSP } from './webFiles';
 
 // Each test starts its own server on a random free port (listen(0)).
 let server: Server | undefined;
@@ -335,6 +339,109 @@ describe('routing', () => {
     expect(res.status).toBe(405);
     expect(res.headers.get('allow')).toBe(allow);
     expect(await res.json()).toEqual({ error: 'method not allowed' });
+  });
+});
+
+describe('the web app', () => {
+  let webDir = '';
+  const INDEX = '<!doctype html><title>Opsaip</title>';
+  const SCRIPT = 'console.log("opsaip")';
+
+  beforeAll(() => {
+    webDir = mkdtempSync(join(tmpdir(), 'opsaip-app-web-'));
+    mkdirSync(join(webDir, 'assets'));
+    writeFileSync(join(webDir, 'index.html'), INDEX);
+    writeFileSync(join(webDir, 'favicon.svg'), '<svg/>');
+    writeFileSync(join(webDir, 'assets', 'index-abc.js'), SCRIPT);
+    // Files next to the build that must never be served.
+    writeFileSync(join(webDir, 'assets', 'index-abc.js.map'), '{}');
+    writeFileSync(join(webDir, 'secret.txt'), 'secret');
+  });
+
+  afterAll(() => {
+    rmSync(webDir, { recursive: true, force: true });
+  });
+
+  it('GET / serves index.html without a token, with the security headers', async () => {
+    await start({ webDir });
+    const res = await fetch(`${base}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toBe(WEB_CSP);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+    expect(await res.text()).toBe(INDEX);
+  });
+
+  it('serves /index.html, /favicon.svg and /assets/<file>; the query string is ignored', async () => {
+    await start({ webDir });
+    expect(await (await fetch(`${base}/index.html`)).text()).toBe(INDEX);
+    expect((await fetch(`${base}/favicon.svg`)).headers.get('content-type')).toBe('image/svg+xml');
+    const js = await fetch(`${base}/assets/index-abc.js?v=1`);
+    expect(js.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
+    expect(js.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(await js.text()).toBe(SCRIPT);
+  });
+
+  it('a wrong token does not matter for the web app', async () => {
+    await start({ webDir });
+    const res = await fetch(`${base}/`, { headers: { authorization: 'Bearer wrong' } });
+    expect(res.status).toBe(200);
+  });
+
+  it('HEAD sends the headers without the body', async () => {
+    await start({ webDir });
+    const res = await rawRequest('HEAD', '/');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-length']).toBe(String(Buffer.byteLength(INDEX)));
+  });
+
+  it('405 for other methods, with Allow: GET, HEAD', async () => {
+    await start({ webDir });
+    const res = await fetch(`${base}/`, { method: 'POST', body: 'x' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET, HEAD');
+  });
+
+  it('404 for a public path whose file is missing', async () => {
+    await start({ webDir });
+    const res = await fetch(`${base}/assets/missing.js`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'not found' });
+  });
+
+  it('404 for the web paths when no web folder is given', async () => {
+    await start();
+    expect((await fetch(`${base}/`)).status).toBe(404);
+  });
+
+  it('404 for the web paths when the web folder does not exist (not built yet)', async () => {
+    await start({ webDir: join(webDir, 'missing') });
+    expect((await fetch(`${base}/`)).status).toBe(404);
+  });
+
+  it.each([
+    '/secret.txt',
+    '/assets/index-abc.js.map',
+    '/assets/../secret.txt',
+    '/assets/..%2fsecret.txt',
+    '/assets/%2e%2e%2fsecret.txt',
+    '/%2e%2e/secret.txt',
+    '/assets/sub/index-abc.js',
+    '/index.html/',
+  ])('%s needs the token, and is never a web file', async (path) => {
+    await start({ webDir });
+    const res = await rawRequest('GET', path);
+    expect(res.statusCode).toBe(401);
+    // With the token it is a plain 404: the file next to the build is not reachable.
+    expect((await rawRequest('GET', path, AUTH)).statusCode).toBe(404);
+  });
+
+  it('the API still needs the token when a web build is served', async () => {
+    await start({ webDir });
+    expect((await fetch(`${base}/v1/tasks`)).status).toBe(401);
+    expect((await fetch(`${base}/v1/tasks`, { headers: AUTH })).status).toBe(200);
   });
 });
 

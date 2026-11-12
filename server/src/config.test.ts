@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEFAULT_DB_PATH, DEFAULT_HOST, DEFAULT_PORT, loadConfig } from './config';
+import { fileURLToPath } from 'node:url';
+import { ConfigError, DEFAULT_DB_PATH, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_WEB_DIR, loadConfig } from './config';
 
 // A valid token, so the tests of other settings can focus on those settings.
 const TOKEN = 'a'.repeat(64);
 const WITH_TOKEN = { OPSAIP_TOKEN: TOKEN };
 
 describe('loadConfig', () => {
-  const defaults = { host: DEFAULT_HOST, port: DEFAULT_PORT, dbPath: DEFAULT_DB_PATH, token: TOKEN };
+  const defaults = { host: DEFAULT_HOST, port: DEFAULT_PORT, dbPath: DEFAULT_DB_PATH, token: TOKEN, webDir: DEFAULT_WEB_DIR };
 
   it('defaults to 127.0.0.1:4100 and ./data/opsaip.db', () => {
     expect(loadConfig(WITH_TOKEN)).toEqual({
@@ -14,7 +15,18 @@ describe('loadConfig', () => {
       port: 4100,
       dbPath: './data/opsaip.db',
       token: TOKEN,
+      webDir: DEFAULT_WEB_DIR,
     });
+  });
+
+  it('serves apps/web/dist of this repository by default, wherever it is started from', () => {
+    expect(DEFAULT_WEB_DIR).toBe(fileURLToPath(new URL('../../apps/web/dist', import.meta.url)));
+    expect(DEFAULT_WEB_DIR.replaceAll('\\', '/')).toMatch(/\/apps\/web\/dist$/);
+  });
+
+  it('reads OPSAIP_WEB_DIR', () => {
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_WEB_DIR: ' /srv/opsaip/web ' }).webDir).toBe('/srv/opsaip/web');
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_WEB_DIR: ' ' }).webDir).toBe(DEFAULT_WEB_DIR);
   });
 
   it('reads OPSAIP_HOST, OPSAIP_PORT and OPSAIP_DB', () => {
@@ -25,7 +37,7 @@ describe('loadConfig', () => {
         OPSAIP_PORT: '8080',
         OPSAIP_DB: '/var/lib/opsaip/x.db',
       }),
-    ).toEqual({ host: '0.0.0.0', port: 8080, dbPath: '/var/lib/opsaip/x.db', token: TOKEN });
+    ).toEqual({ host: '0.0.0.0', port: 8080, dbPath: '/var/lib/opsaip/x.db', token: TOKEN, webDir: DEFAULT_WEB_DIR });
   });
 
   it('treats empty or blank values as unset, so an empty host never means "all interfaces"', () => {
@@ -45,7 +57,7 @@ describe('loadConfig', () => {
         OPSAIP_DB: ' a.db ',
         OPSAIP_TOKEN: ` ${TOKEN}\n`,
       }),
-    ).toEqual({ host: '::1', port: 4200, dbPath: 'a.db', token: TOKEN });
+    ).toEqual({ host: '::1', port: 4200, dbPath: 'a.db', token: TOKEN, webDir: DEFAULT_WEB_DIR });
   });
 
   it('accepts the port range edges 1 and 65535', () => {

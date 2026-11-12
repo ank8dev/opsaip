@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { createTaskStore } from '@opsaip/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTokenCheck, MIN_TOKEN_LENGTH, tokenProblem } from './accessToken';
-import { createApp } from './app';
+import { createApp } from '../app';
 
 const TOKEN = '3f9c2a7b1e8d4c6a9b0e5f2d7c1a8b3e6d9f0c4a7b2e5d8c1f3a6b9e0d2c5f8a';
 
@@ -61,7 +61,7 @@ describe('createTokenCheck', () => {
   });
 });
 
-describe('HTTP: every request except /healthz needs the token', () => {
+describe('HTTP: every request except /healthz and the web app files needs the token', () => {
   let server: Server | undefined;
   let base = '';
 
@@ -106,6 +106,11 @@ describe('HTTP: every request except /healthz needs the token', () => {
     await expect401(await fetch(`${base}/healthz/x`));
     await expect401(await fetch(`${base}/healthzz`));
     await expect401(await fetch(`${base}/HEALTHZ`));
+    // Near the web app paths, but not them (see auth/requestGuard.ts).
+    await expect401(await fetch(`${base}/assets`));
+    await expect401(await fetch(`${base}/assets/x.map`));
+    await expect401(await fetch(`${base}/index.htm`));
+    await expect401(await fetch(`${base}/favicon.ico`));
   });
 
   it('GET /v1/tasks: 401 without a token or with a wrong one, 200 with the right one', async () => {

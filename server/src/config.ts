@@ -1,18 +1,23 @@
 // Server settings, read from environment variables once at startup.
-import { HOW_TO_CREATE_TOKEN, tokenProblem } from './accessToken';
+import { fileURLToPath } from 'node:url';
+import { HOW_TO_CREATE_TOKEN, tokenProblem } from './auth/accessToken';
 
 export interface Config {
   host: string;
   port: number;
   /** SQLite file. A relative path is relative to the working directory. */
   dbPath: string;
-  /** Access token for every request except /healthz. Never log it. */
+  /** Access token for every request except the public paths. Never log it. */
   token: string;
+  /** The web app build the server serves. A relative path is relative to the working directory. */
+  webDir: string;
 }
 
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 4100;
 export const DEFAULT_DB_PATH = './data/opsaip.db';
+/** apps/web/dist in this repository, wherever the server is started from. */
+export const DEFAULT_WEB_DIR = fileURLToPath(new URL('../../apps/web/dist', import.meta.url));
 
 /** A setting is wrong. The message is safe to print and says how to fix it. */
 export class ConfigError extends Error {
@@ -43,6 +48,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
   }
 
   const dbPath = valueOf(env.OPSAIP_DB) ?? DEFAULT_DB_PATH;
+  const webDir = valueOf(env.OPSAIP_WEB_DIR) ?? DEFAULT_WEB_DIR;
 
   const token = valueOf(env.OPSAIP_TOKEN);
   if (token === undefined) {
@@ -51,7 +57,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
   const problem = tokenProblem(token);
   if (problem !== undefined) throw new ConfigError(`${problem}. ${HOW_TO_CREATE_TOKEN}`);
 
-  return { host, port, dbPath, token };
+  return { host, port, dbPath, token, webDir };
 }
 
 function valueOf(raw: string | undefined): string | undefined {
