@@ -188,3 +188,8 @@ button { font: inherit; color: inherit; }
 }
 .op-field:focus { outline: none; border-color: var(--op-focus); }
 .op-field.op-mono { font-family: var(--op-mono); font-size: 12px; }
+
+/* Where the data comes from (badge and Settings → Server): a dot by tone */
+.op-conn-dot { flex: none; width: 6px; height: 6px; border-radius: 999px; background: var(--op-text-muted); }
+[data-tone="live"] > .op-conn-dot { background: var(--op-accent); }
+[data-tone="error"] > .op-conn-dot { background: var(--op-error); }

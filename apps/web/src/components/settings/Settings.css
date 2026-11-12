@@ -80,3 +80,10 @@
 @media (max-width: 860px) {
   .op-set-note { margin-left: 0; }
 }
+
+/* Server: connection state and the token form */
+.op-conn-state { display: inline-flex; align-items: center; gap: 6px; }
+.op-conn-form { margin: 0; }
+.op-conn-fields { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.op-conn-fields .op-field { flex: 1 1 240px; width: auto; }
+.op-conn-problem { flex-basis: 100%; margin: 0; font-size: 12px; line-height: 16px; color: var(--op-error); }

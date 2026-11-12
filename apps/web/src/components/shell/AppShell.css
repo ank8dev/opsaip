@@ -21,6 +21,10 @@
 .op-gear-btn { right: 48px; display: none; }
 .op-gear-btn svg { width: 16px; height: 16px; }
 
+/* Demo / Connecting / Live / Offline, left of the corner buttons */
+.op-conn { right: 52px; width: auto; gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.op-home .op-conn[data-tone="error"] { color: var(--op-error); }
+
 /* The theme icon: a half-filled circle that turns over */
 .op-theme-ico {
   position: relative; width: 14px; height: 14px; border-radius: 999px; border: 1.5px solid currentColor; overflow: hidden;
@@ -33,4 +37,5 @@
 @media (max-width: 860px) {
   .op-home { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42%) minmax(0, 1fr); }
   .op-gear-btn { display: flex; }
+  .op-conn { right: 88px; }
 }

@@ -18,7 +18,7 @@ let localSeq = 0;
 
 /** Where you talk to Opsaip: create a task, message a teammate, start an agent, or announce. */
 export function Composer({ task }: { task: AnyTask | null }) {
-  const { ws, people, addLocalTask, changeTask, addMessage } = useWorkspace();
+  const { ws, people, addLocalTask, changeTask, addMessage, readOnly } = useWorkspace();
   const ui = useUi();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -139,6 +139,21 @@ export function Composer({ task }: { task: AnyTask | null }) {
     label: c.name,
     detail: [people[c.owner]?.name, c.status === 'Connected' ? '' : 'offline'].filter(Boolean).join(' · '),
   }));
+
+  // Server data is read-only for now: nothing here could reach the server.
+  if (readOnly) {
+    return (
+      <div className="op-glowbox">
+        <div className="op-ring">
+          <div className="op-composer op-composer-readonly">
+            <p className="op-readonly-note">
+              Read-only. Agents report tasks to your server through MCP; starting and answering tasks from here comes later.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="op-glowbox">

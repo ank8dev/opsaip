@@ -6,9 +6,11 @@ import { ProfileSettings, WorkspaceSettings } from './PeopleSections';
 import { AgentSettings, ApprovalSettings, ToolServerSettings } from './AgentSections';
 import { RepositorySettings, SlackSettings, SyncSettings } from './SyncSections';
 import { AppearanceSettings, DataSettings, NotificationSettings } from './PreferenceSections';
+import { ServerSettings } from './ServerSection';
 import './Settings.css';
 
 const INDEX: [string, string][] = [
+  ['set-server', 'Server'],
   ['set-profile', 'Profile'],
   ['set-workspace', 'Workspace'],
   ['set-agents', 'Agents'],
@@ -109,6 +111,7 @@ export function Settings() {
             ))}
           </nav>
           <div className="op-set-body">
+            <ServerSettings />
             <ProfileSettings />
             <WorkspaceSettings />
             <AgentSettings />

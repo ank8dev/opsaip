@@ -225,3 +225,7 @@
   .op-sum { grid-column: 2; }
   .op-chat, .op-card-meta, .op-chat-foot, .op-links { padding-left: 20px; }
 }
+
+/* Server data: the composer is a read-only note */
+.op-composer-readonly { padding: 14px 18px; }
+.op-readonly-note { margin: 0; font-size: 13px; line-height: 20px; color: var(--op-text-muted); }

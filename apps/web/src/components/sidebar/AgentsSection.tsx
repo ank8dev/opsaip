@@ -55,7 +55,7 @@ export function AgentsSection({ mode }: { mode: SectionMode }) {
                   >
                     <StatusDot status={t.status} batonKey={t.id} />
                     <span className="op-arow-title">{t.task}</span>
-                    {owner ? <Face person={owner} small /> : <Face label="Y" small />}
+                    {isLocal(t) ? <Face label="Y" small /> : owner && <Face person={owner} small />}
                     <span className="op-arow-sub">
                       {[t.tool, t.detail].filter(Boolean).join(' · ')}
                       {!isLocal(t) && syncFlag(t.id) === 'conflict' && (
