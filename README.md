@@ -21,6 +21,7 @@ new work, and message teammates.
 ```
 opsaip/
   apps/
+    desktop/      macOS app: an Electron shell around the apps/web build, no UI of its own
     web/          React web app (Vite + TypeScript) — the Opsaip interface
       src/
         styles/       design tokens (tokens.css) and base styles
@@ -42,8 +43,7 @@ opsaip/
 
 ### Planned
 
-- **`apps/desktop/`** — a desktop app: an Electron shell around the same `apps/web` build
-  (like Claude desktop around claude.ai). No UI code of its own.
+- **`apps/desktop/`, next steps** — a `.dmg` for Intel and Apple Silicon.
 - **`server/`, next steps** — sync with
   Linear / GitHub / Notion, Slack messaging, and the API the web app reads instead of mocks.
 
@@ -60,6 +60,38 @@ npm test             # run the tests of every workspace
 ```
 
 Pass Vite options after `--`, e.g. `npm run dev -- --port 4000`.
+
+## Run the desktop app (development)
+
+The desktop app (`apps/desktop`) is a macOS window around the `apps/web` build, loaded from
+disk. It needs a Mac and `npm install` in the repository once.
+
+```bash
+npm run desktop      # builds apps/web, then opens it in the desktop app
+```
+
+To reach an Opsaip server, create `~/Library/Application Support/Opsaip/config.json`:
+
+```json
+{ "serverUrl": "https://opsaip.example.com" }
+```
+
+`serverUrl` must use `https://`, except for a server on the same Mac (`http://localhost:4100`,
+`http://127.0.0.1:4100`). No `user:password@`, query or fragment; a path is kept as a prefix.
+Without the file the app works offline; with a bad file it says what is wrong and works offline.
+
+How it stays locked down:
+
+- The page is served at `app://opsaip/` from the bundled web build, never from the network.
+  Its Content-Security-Policy allows only its own files and its own origin.
+- The page calls the API on its own origin (`/v1/...`). The app forwards `app://opsaip/v1/*`
+  to `serverUrl` with only the `Authorization` and `Content-Type` headers, returns the status,
+  body and `Content-Type`, and refuses redirects. That server is the only network address the
+  app reaches. Nothing under `/v1` is served from disk.
+- Node.js is off in the page (`contextIsolation`, `sandbox`, no `nodeIntegration`, no preload).
+  The only web permission granted is writing to the clipboard.
+- Links that leave the app (`https:`, `http:`, `mailto:`) open in the default browser or mail
+  app; anything else is dropped.
 
 ## Run the server
 
