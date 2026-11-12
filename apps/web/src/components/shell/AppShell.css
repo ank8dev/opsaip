@@ -39,3 +39,19 @@
   .op-gear-btn { display: flex; }
   .op-conn { right: 88px; }
 }
+
+/* Desktop app (macOS): no title bar, the window buttons sit over the top-left
+   corner. <html data-shell="desktop"> is set in main.tsx. The buttons are at
+   x 16, y 18 (apps/desktop/src/main.ts), about 52 x 12 px, centred at y 24. */
+.op-drag { display: none; }
+:root[data-shell="desktop"] .op-drag {
+  display: block; position: absolute; top: 0; left: 0; right: 0; height: 40px; z-index: 20;
+  -webkit-app-region: drag;
+}
+/* The logo row: centred on the buttons (8 + 32 / 2 = 24), and clear of them. */
+:root[data-shell="desktop"] .op-side { padding-top: 8px; }
+:root[data-shell="desktop"] .op-side-top { padding-left: 72px; }
+/* Anything you can click or type in stays clickable inside the drag strip. */
+:root[data-shell="desktop"] :is(button, a, input, select, textarea, label, [role="button"], [tabindex], .op-menu, .op-lb) {
+  -webkit-app-region: no-drag;
+}
