@@ -1,0 +1,24 @@
+/* Dev-only preview page layout. */
+html, body, #root { height: auto; min-height: 100%; }
+.opv { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 32px; }
+.opv h1 { margin: 0; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; flex: 1; }
+.opv h1 span { font-size: 12px; color: var(--op-text-muted); margin-left: 8px; }
+.opv h2 { margin: 0 0 12px; font-size: 13px; font-weight: 500; color: var(--op-text-muted); }
+.opv button {
+  background: var(--op-surface); border: 1px solid var(--op-border); border-radius: 999px;
+  padding: 6px 12px; cursor: pointer; font-size: 13px;
+}
+.opv button[aria-pressed="true"] { background: var(--op-accent); color: var(--op-on-accent); border-color: transparent; }
+.opv-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.opv-stage {
+  display: grid; justify-items: center; gap: 16px; padding: 24px 16px;
+  background: var(--op-surface); border: 1px solid var(--op-border); border-radius: 20px;
+}
+.opv-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.opv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.opv-grid figure {
+  margin: 0; padding: 16px; display: grid; gap: 10px; justify-items: start;
+  background: var(--op-surface); border: 1px solid var(--op-border); border-radius: 16px;
+}
+.opv-sizes { display: flex; align-items: center; gap: 16px; }
+.opv-grid figcaption { font-size: 12px; color: var(--op-text-secondary); }

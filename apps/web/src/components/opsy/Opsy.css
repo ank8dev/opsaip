@@ -1,0 +1,2 @@
+/* Opsy keeps its exact square; it never takes clicks for now. */
+.op-opsy { display: block; flex: none; pointer-events: none; }
