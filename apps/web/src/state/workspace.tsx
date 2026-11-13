@@ -12,7 +12,7 @@ import { byImportance, byStatus, isImportant, mapState, peopleById, type TrayLev
 import {
   clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
-import { startPoller, type DataSource, type LiveState } from '../data/poller';
+import { keepLastGood, startPoller, type DataSource, type LiveState } from '../data/poller';
 
 type SyncFlag = 'conflict' | 'suggested' | '';
 
@@ -65,7 +65,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (connection === null) return;
     const poller = startPoller({
       fetchTasks: (signal) => fetchTasks(connection.token, signal),
-      onState: setLive,
+      onState: (next) => setLive((prev) => keepLastGood(prev, next)),
       isHidden: () => document.hidden,
     });
     const onVisibility = () => {

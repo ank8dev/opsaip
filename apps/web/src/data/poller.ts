@@ -42,6 +42,15 @@ export interface Poller {
   stop: () => void;
 }
 
+/**
+ * The state to show after `next` arrives, given what is on screen (`prev`).
+ * The caller (the React provider) keeps `prev`; a poller only knows its own
+ * answers, and a new poller starts with none.
+ */
+export function keepLastGood(_prev: LiveState | null, next: LiveState): LiveState {
+  return next;
+}
+
 /** Start polling at once. */
 export function startPoller({
   fetchTasks,
