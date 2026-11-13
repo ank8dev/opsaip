@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROBLEM_TEXT, ago, describeSource } from './connectionView';
+import { PROBLEM_SHORT, PROBLEM_TEXT, ago, describeSource, noDecisionsText } from './connectionView';
 import type { FetchProblem } from './source';
 
 const NOW = 1_000_000_000;
@@ -56,5 +56,33 @@ describe('ago', () => {
     [26 * 3_600_000, '26 h ago'],
   ])('%i ms -> %s', (elapsed, text) => {
     expect(ago(NOW - elapsed, NOW)).toBe(text);
+  });
+});
+
+describe('noDecisionsText', () => {
+  const NOTHING = 'Nothing needs you right now';
+
+  it('says "Nothing needs you right now" only for Demo and Live', () => {
+    expect(noDecisionsText({ status: 'demo' }, NOW)).toBe(NOTHING);
+    expect(noDecisionsText({ status: 'live', tasks: [], skipped: 0, at: NOW }, NOW)).toBe(NOTHING);
+    expect(noDecisionsText({ status: 'connecting' }, NOW)).toBe('Connecting to the server…');
+  });
+
+  it('Offline: says the server can’t be reached and when data was last updated', () => {
+    const v = noDecisionsText({ status: 'offline', problem: 'unreachable', tasks: [], skipped: 0, at: NOW - 3 * 60_000 }, NOW);
+    expect(v).toBe('Can’t reach the server · last updated 3 min ago');
+  });
+
+  it('Offline before any success: says there is no data yet', () => {
+    const v = noDecisionsText({ status: 'offline', problem: 'unreachable', tasks: [], skipped: 0, at: null }, NOW);
+    expect(v).toBe('Can’t reach the server · no data yet');
+  });
+
+  it.each(PROBLEMS)('Offline (%s): never says nothing needs you', (problem) => {
+    for (const at of [null, NOW]) {
+      const v = noDecisionsText({ status: 'offline', problem, tasks: [], skipped: 0, at }, NOW);
+      expect(v).not.toContain('Nothing needs you');
+      expect(v.startsWith(PROBLEM_SHORT[problem])).toBe(true);
+    }
   });
 });

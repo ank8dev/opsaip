@@ -14,7 +14,7 @@ export function LinkedItems({ task }: { task: Task }) {
     <div className="op-links" aria-label="Linked items">
       <div className="op-links-h">
         <span>Linked</span>
-        <span>Status comes from {statusOwner}</span>
+        {links.length > 0 && <span>Status comes from {statusOwner}</span>}
       </div>
 
       {!links.length && <div className="op-links-empty">Not linked to Linear, GitHub or Notion yet</div>}

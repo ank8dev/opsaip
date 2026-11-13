@@ -43,6 +43,34 @@ export function describeSource(source: DataSource, now: number): ConnectionView 
   }
 }
 
+/** Short form of each problem, for one line in the tray. */
+export const PROBLEM_SHORT: Record<FetchProblem, string> = {
+  unauthorized: 'The server rejected the token',
+  unreachable: 'Can’t reach the server',
+  'server-error': 'The server answered with an error',
+  'bad-response': 'Can’t read the server’s answer',
+};
+
+/**
+ * What the tray says when no task needs you. "Nothing needs you right now"
+ * is a claim about the team, so it is made only with Demo data or a live
+ * server. Without a working connection the list can be old or empty, so
+ * the tray says what is wrong and how old the data is instead.
+ */
+export function noDecisionsText(source: DataSource, now: number): string {
+  switch (source.status) {
+    case 'demo':
+    case 'live':
+      return 'Nothing needs you right now';
+    case 'connecting':
+      return 'Connecting to the server…';
+    case 'offline': {
+      const when = source.at === null ? 'no data yet' : `last updated ${ago(source.at, now)}`;
+      return `${PROBLEM_SHORT[source.problem]} · ${when}`;
+    }
+  }
+}
+
 /** "just now", "12 s ago", "3 min ago", "2 h ago". A time in the future counts as just now. */
 export function ago(at: number, now: number): string {
   const s = Math.floor((now - at) / 1000);

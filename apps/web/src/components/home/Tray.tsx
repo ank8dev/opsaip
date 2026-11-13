@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { isLocal } from '../../types';
 import { waitingFor } from '../../data/selectors';
+import { noDecisionsText } from '../../data/connectionView';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { listItem } from '../../styles/motion';
@@ -10,8 +11,9 @@ import { StatusDot } from '../common/StatusDot';
 
 /** The summary line: "2 need you now · 3 can wait". Opens and closes the list. */
 export function TrayBar() {
-  const { decisionTasks, attentionTasks, localTasks } = useWorkspace();
+  const { decisionTasks, attentionTasks, localTasks, source } = useWorkspace();
   const { trayLevel, trayOpen, setTrayOpen } = useUi();
+  const clock = useNow(10_000);
   const all = decisionTasks();
   const now = attentionTasks(trayLevel);
   const later = all.length - now.length;
@@ -21,7 +23,7 @@ export function TrayBar() {
     now.length ? (
       <><b className="op-n">{now.length}</b> {now.length === 1 ? 'needs you now' : 'need you now'}</>
     ) : (
-      <>Nothing needs you right now</>
+      <>{noDecisionsText(source, clock.getTime())}</>
     ),
     later > 0 && <><b className="op-n">{later}</b> can wait</>,
     yoursRunning && <>yours just started</>,
@@ -51,10 +53,10 @@ export function TrayBar() {
 
 /** Only decisions that matter right now: "Needs you", and tools that disagree. */
 export function TrayList() {
-  const { attentionTasks, people } = useWorkspace();
+  const { attentionTasks, people, source } = useWorkspace();
   const ui = useUi();
   const t = ui.motion;
-  const now = useNow();
+  const now = useNow(10_000); // also for "last updated … ago" when offline
   const tasks = attentionTasks(ui.trayLevel);
 
   // Each time the tray opens, the rows drop in again.
@@ -70,6 +72,8 @@ export function TrayList() {
               {tasks.map((task, i) => {
                 const conflict = task.status !== 'Needs you'; // here only because its tools disagree
                 const owner = isLocal(task) ? 'You' : people[task.owner]?.name;
+                const note = task.impact || task.detail; // the agent's note: text for a person
+                const rest = [owner, waitingFor(task, now.getTime())].filter(Boolean).join(' · ');
                 return (
                   <motion.li key={task.id} className="op-li" {...listItem(t, i)}>
                     <button
@@ -89,13 +93,15 @@ export function TrayList() {
                             {' · '}
                           </Fragment>
                         )}
-                        {[task.impact || task.detail, owner, waitingFor(task, now.getTime())].filter(Boolean).join(' · ')}
+                        {note && <span className="op-note">{note}</span>}
+                        {note && rest && ' · '}
+                        {rest}
                       </span>
                     </button>
                   </motion.li>
                 );
               })}
-              {!tasks.length && <li className="op-empty">Nothing needs you right now</li>}
+              {!tasks.length && <li className="op-empty">{noDecisionsText(source, now.getTime())}</li>}
             </ul>
           </div>
         </div>
