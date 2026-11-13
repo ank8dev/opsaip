@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { startPoller, type LiveState } from './poller';
+import { keepLastGood, startPoller, type LiveState } from './poller';
 import type { FetchTasksResult } from './source';
 import type { Task } from '../types';
 
@@ -168,5 +168,76 @@ describe('startPoller', () => {
     poller.stop();
     await vi.advanceTimersByTimeAsync(INTERVAL * 10);
     expect(fetchTasks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a new poller for the same connection (React Strict Mode, hot reload, effect re-run)', () => {
+  // Bug: with the server stopped, the UI showed an empty list ("Agents 0",
+  // "Nothing needs you right now") although a "Needs you" task had been loaded.
+  // Each poller keeps its last good tasks only in its own closure, so a new
+  // poller starts with none: it says "connecting", then "offline, no tasks".
+  // The provider folds every state into what is on screen with keepLastGood.
+  it('keeps the tasks on screen until a new successful answer', async () => {
+    let screen: LiveState | null = null;
+    const show = (next: LiveState) => { screen = keepLastGood(screen, next); };
+    const seen: LiveState[] = [];
+    const record = (next: LiveState) => { show(next); seen.push(screen!); };
+
+    const first = startPoller({ fetchTasks: async () => ok(T1), onState: record, intervalMs: INTERVAL, timeoutMs: TIMEOUT });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(screen).toEqual({ status: 'live', tasks: T1, skipped: 0, at: 1_000_000 });
+
+    // The server stops, and the effect runs again: the old poller is stopped, a new one starts.
+    first.stop();
+    vi.setSystemTime(2_000_000);
+    seen.length = 0;
+    let up = false;
+    const second = startPoller({
+      fetchTasks: async () => (up ? ok(T2) : { ok: false, problem: 'unreachable' }),
+      onState: record,
+      intervalMs: INTERVAL,
+      timeoutMs: TIMEOUT,
+    });
+    await vi.advanceTimersByTimeAsync(INTERVAL); // two failed polls
+    expect(seen.length).toBeGreaterThan(1);
+    for (const s of seen) expect(s).toMatchObject({ tasks: T1, at: 1_000_000 }); // never an empty list
+    expect(screen).toEqual({ status: 'offline', problem: 'unreachable', tasks: T1, skipped: 0, at: 1_000_000 });
+
+    // The server is back: only now the tasks are replaced.
+    up = true;
+    await vi.advanceTimersByTimeAsync(INTERVAL);
+    expect(screen).toMatchObject({ status: 'live', tasks: T2, at: 2_000_000 + 2 * INTERVAL });
+    second.stop();
+  });
+});
+
+describe('keepLastGood', () => {
+  const live: LiveState = { status: 'live', tasks: T1, skipped: 2, at: 1_000 };
+  const offlineEmpty: LiveState = { status: 'offline', problem: 'unreachable', tasks: [], skipped: 0, at: null };
+
+  it('takes any state when nothing was loaded before', () => {
+    expect(keepLastGood(null, { status: 'connecting' })).toEqual({ status: 'connecting' });
+    expect(keepLastGood(null, offlineEmpty)).toEqual(offlineEmpty);
+    expect(keepLastGood({ status: 'connecting' }, offlineEmpty)).toEqual(offlineEmpty);
+  });
+
+  it('a new success always replaces the screen', () => {
+    const next: LiveState = { status: 'live', tasks: T2, skipped: 0, at: 9_000 };
+    expect(keepLastGood(live, next)).toEqual(next);
+  });
+
+  it('"connecting" does not hide loaded tasks', () => {
+    expect(keepLastGood(live, { status: 'connecting' })).toEqual(live);
+  });
+
+  it('a failure with no tasks of its own keeps the loaded tasks, with the new problem', () => {
+    expect(keepLastGood(live, offlineEmpty)).toEqual({ status: 'offline', problem: 'unreachable', tasks: T1, skipped: 2, at: 1_000 });
+    const offlineOld: LiveState = { status: 'offline', problem: 'server-error', tasks: T1, skipped: 0, at: 1_000 };
+    expect(keepLastGood(offlineOld, offlineEmpty)).toEqual({ ...offlineOld, problem: 'unreachable' });
+  });
+
+  it('a failure that has newer tasks of its own wins', () => {
+    const newer: LiveState = { status: 'offline', problem: 'unreachable', tasks: T2, skipped: 0, at: 5_000 };
+    expect(keepLastGood(live, newer)).toEqual(newer);
   });
 });

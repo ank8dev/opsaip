@@ -42,6 +42,20 @@ export interface Poller {
   stop: () => void;
 }
 
+/**
+ * The state to show after `next` arrives, given what is on screen (`prev`).
+ * The caller (the React provider) keeps `prev`; a poller only knows its own
+ * answers, and a new poller starts with none.
+ */
+export function keepLastGood(prev: LiveState | null, next: LiveState): LiveState {
+  if (next.status === 'live') return next; // only a new success replaces the tasks
+  const loaded = prev !== null && prev.status !== 'connecting' && prev.at !== null ? prev : null;
+  if (loaded === null) return next;
+  if (next.status === 'connecting') return loaded; // a new poller has no answer yet: keep the screen
+  if (next.at !== null) return next; // the failing poller has its own, newer tasks
+  return { ...next, tasks: loaded.tasks, skipped: loaded.skipped, at: loaded.at };
+}
+
 /** Start polling at once. */
 export function startPoller({
   fetchTasks,

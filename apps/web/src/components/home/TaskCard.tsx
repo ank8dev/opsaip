@@ -15,6 +15,7 @@ export function TaskCard({ task }: { task: AnyTask }) {
   const t = ui.motion;
   const backRef = useRef<HTMLButtonElement>(null);
   const owner = isLocal(task) ? undefined : people[task.owner];
+  const meta = [isLocal(task) ? 'You' : owner?.name, task.tool].filter(Boolean).join(' · ');
 
   useEffect(() => { backRef.current?.focus({ preventScroll: true }); }, [task.id]);
 
@@ -51,7 +52,11 @@ export function TaskCard({ task }: { task: AnyTask }) {
             {task.status}
           </span>
         </div>
-        <div className="op-card-meta">{[isLocal(task) ? 'You' : owner?.name, task.tool, task.detail].filter(Boolean).join(' · ')}</div>
+        <div className="op-card-meta">
+          {meta}
+          {meta && task.detail && ' · '}
+          {task.detail && <span className="op-note">{task.detail}</span>}
+        </div>
         <div className="op-scroll op-card-scroll">
           {!isLocal(task) && <LinkedItems task={task} />}
           <Chat messages={messagesFor(task)} you={owner?.name ?? 'You'} agent={task.source || 'Agent'} />
