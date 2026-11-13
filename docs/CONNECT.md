@@ -8,7 +8,7 @@ Checked with Claude Code 2.1.322 and Codex CLI 0.167.1.
 
 ## Before you start
 
-1. **Node.js 20.19 or newer** on the machine where the agent runs (`node --version`).
+1. **Node.js 22.13 or newer** on the machine where the agent runs (`node --version`).
 2. **This repository, with dependencies installed:** run `npm install` once in its root folder.
 3. **The Opsaip server running,** and its access token. See [Run the server](../README.md#run-the-server).
 4. **Two values:**
