@@ -1,6 +1,8 @@
 // Server settings, read from environment variables once at startup.
 import { fileURLToPath } from 'node:url';
 import { HOW_TO_CREATE_TOKEN, tokenProblem } from './auth/accessToken';
+import type { AskProvider } from './auth/askProvider';
+import { askProviderFromEnv } from './auth/llm';
 
 export interface Config {
   host: string;
@@ -11,6 +13,12 @@ export interface Config {
   token: string;
   /** The web app build the server serves. A relative path is relative to the working directory. */
   webDir: string;
+  /**
+   * The AI model for POST /v1/ask, from OPSAIP_LLM_PROVIDER, OPSAIP_LLM_KEY
+   * and OPSAIP_LLM_MODEL. Absent when Ask is off. It holds the API key in a
+   * closure: the key is not a field of the config and cannot be logged with it.
+   */
+  ask?: AskProvider;
 }
 
 export const DEFAULT_HOST = '127.0.0.1';
@@ -30,6 +38,9 @@ export class ConfigError extends Error {
  * OPSAIP_TOKEN is required on every host, localhost included: localhost is
  * not a security boundary (other local processes, browser DNS rebinding).
  * Error messages never contain the token.
+ *
+ * Ask (auth/llm.ts) is optional: provider and key both unset turns it off;
+ * only one of them set is an error, so a half-done setup does not start.
  *
  * An empty or blank variable counts as unset. This matters for OPSAIP_HOST:
  * server.listen(port, '') would listen on ALL interfaces, not on localhost.
@@ -57,7 +68,12 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
   const problem = tokenProblem(token);
   if (problem !== undefined) throw new ConfigError(`${problem}. ${HOW_TO_CREATE_TOKEN}`);
 
-  return { host, port, dbPath, token, webDir };
+  const ask = askProviderFromEnv(env);
+  if (!ask.ok) throw new ConfigError(ask.problem);
+
+  const config: Config = { host, port, dbPath, token, webDir };
+  if (ask.provider !== undefined) config.ask = ask.provider;
+  return config;
 }
 
 function valueOf(raw: string | undefined): string | undefined {

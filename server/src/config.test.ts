@@ -19,6 +19,21 @@ describe('loadConfig', () => {
     });
   });
 
+  it('Ask is off by default; with OPSAIP_LLM_PROVIDER and OPSAIP_LLM_KEY it has a provider', () => {
+    expect(loadConfig(WITH_TOKEN).ask).toBeUndefined();
+    const config = loadConfig({ ...WITH_TOKEN, OPSAIP_LLM_PROVIDER: 'gemini', OPSAIP_LLM_KEY: 'AIza-config-SECRET-key' });
+    expect(config.ask).toMatchObject({ name: 'gemini', model: 'gemini-3.5-flash-lite' });
+    // The key is held by the provider, not stored as a config field.
+    expect(JSON.stringify(config)).not.toContain('SECRET');
+  });
+
+  it('a half-done Ask setup is a ConfigError that does not contain the key', () => {
+    const env = { ...WITH_TOKEN, OPSAIP_LLM_KEY: 'AIza-config-SECRET-key' };
+    expect(() => loadConfig(env)).toThrow(ConfigError);
+    expect(() => loadConfig(env)).toThrow('OPSAIP_LLM_PROVIDER is not');
+    expect(() => loadConfig(env)).not.toThrow(/SECRET/);
+  });
+
   it('serves apps/web/dist of this repository by default, wherever it is started from', () => {
     expect(DEFAULT_WEB_DIR).toBe(fileURLToPath(new URL('../../apps/web/dist', import.meta.url)));
     expect(DEFAULT_WEB_DIR.replaceAll('\\', '/')).toMatch(/\/apps\/web\/dist$/);

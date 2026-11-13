@@ -1,5 +1,6 @@
 // The real server process (src/main.ts): refuses to start without a valid
-// token, and never prints the token.
+// token or with a half-done Ask setup, and never prints the token or the
+// LLM key.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -84,5 +85,36 @@ describe('startup', { timeout: 30_000 }, () => {
     expect(output).not.toContain(TOKEN);
     expect(output).not.toContain('SECRET');
     expect(output).not.toContain(wrong);
+  });
+
+  it('refuses a half-done Ask setup, says how to fix it and does not print the key', async () => {
+    const key = 'AIza-startup-SECRET-llm-key-0123456789';
+    const server = spawn({ OPSAIP_PORT: String(await freePort()), OPSAIP_TOKEN: TOKEN, OPSAIP_LLM_KEY: key });
+    expect(await server.exited).toBe(1);
+    expect(server.output()).toContain('OPSAIP_LLM_KEY is set, but OPSAIP_LLM_PROVIDER is not');
+    expect(server.output()).not.toContain(key);
+    expect(server.output()).not.toContain('listening');
+  });
+
+  it('with Ask set up, says so with the provider and model, and never prints the key', async () => {
+    const key = 'AIza-startup-SECRET-llm-key-0123456789';
+    const server = spawn({
+      OPSAIP_PORT: String(await freePort()),
+      OPSAIP_TOKEN: TOKEN,
+      OPSAIP_LLM_PROVIDER: 'gemini',
+      OPSAIP_LLM_KEY: key,
+    });
+    await waitUntilListening(server);
+    expect(await stopServer(server)).toBe(0);
+    expect(server.output()).toContain('Ask is on (gemini, model gemini-3.5-flash-lite)');
+    expect(server.output()).not.toContain(key);
+    expect(server.output()).not.toContain('SECRET');
+  });
+
+  it('without Ask set up, says it is off', async () => {
+    const server = spawn({ OPSAIP_PORT: String(await freePort()), OPSAIP_TOKEN: TOKEN });
+    await waitUntilListening(server);
+    expect(await stopServer(server)).toBe(0);
+    expect(server.output()).toContain('Ask is off');
   });
 });

@@ -151,6 +151,9 @@ npm run server                                 # http://127.0.0.1:4100
 | `OPSAIP_DB`   | `./data/opsaip.db` | SQLite file, created if missing. Relative to the working directory: `server/` when started with `npm run server`, so `server/data/opsaip.db` (git-ignored). |
 | `OPSAIP_TOKEN` | none, required    | Access token: at least 32 visible ASCII characters, no spaces. The server never logs it. |
 | `OPSAIP_WEB_DIR` | `apps/web/dist` of this repository | The web app build the server serves at `/`. If it is missing, the server still starts and says how to build it. |
+| `OPSAIP_LLM_PROVIDER` | none (Ask off) | AI provider for `POST /v1/ask`: `gemini`. Set together with `OPSAIP_LLM_KEY`, see [Ask](#ask-optional). |
+| `OPSAIP_LLM_KEY` | none (Ask off) | The provider's API key. Never logged, never returned, never sent to the browser. |
+| `OPSAIP_LLM_MODEL` | `gemini-3.5-flash-lite` | Model id. Only with the two variables above. |
 
 Endpoints (v0). Every request must send `Authorization: Bearer <token>`, except `GET /healthz`
 and the web app files (`/`, `/index.html`, `/favicon.svg`, `/assets/<file>`); a missing or wrong
@@ -161,6 +164,7 @@ JSON: `{ "error": "<reason>" }`.
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
+| `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 | `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
 
@@ -190,6 +194,61 @@ server is upgraded on start, in one transaction; one from a newer server is refu
 Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
 On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is
 expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
+
+## Ask (optional)
+
+`POST /v1/ask` answers a question about your agents and tasks with an AI model, using your own
+API key. The model sees only what the server knows about the tasks and is told to answer only
+from that data, to say plainly when it does not know, and never to invent tasks, people or
+numbers. Models can still make mistakes: check important answers against the tasks.
+
+> **Your task data leaves your server.** Each question sends the question and the tasks'
+> title, status, agent, note and last update time to the provider you choose (Google, for
+> `gemini`). On the **free tier of the Gemini API, Google may use what you send, and the
+> answers, to improve its products and models, and human reviewers may read it**. Google says
+> paid (billing-enabled) use is not used that way. Read the
+> [Gemini API terms](https://ai.google.dev/gemini-api/terms) before you turn Ask on, and do not
+> use it on a free tier for tasks whose titles or notes are confidential.
+
+Ask is off until you set it up. Without it, `POST /v1/ask` answers 503 and says how to set it up.
+
+**Get a Gemini API key**
+
+1. Sign in with a Google account at [Google AI Studio](https://aistudio.google.com/apikey).
+2. Create an API key.
+   New keys start on the free tier, with its daily limits.
+3. Treat the key like a password: do not commit it, do not paste it into the web app.
+
+**Turn Ask on** (both variables, then restart the server):
+
+```bash
+export OPSAIP_LLM_PROVIDER=gemini
+export OPSAIP_LLM_KEY="<your Gemini API key>"
+# optional: export OPSAIP_LLM_MODEL=gemini-3.5-flash-lite
+npm run server        # prints "Ask is on (gemini, model gemini-3.5-flash-lite)"
+```
+
+Only one of the two set, an unknown provider or a malformed key stops the server at startup
+with a message that says what to fix (and never shows the key).
+
+```bash
+curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
+  -d '{"question":"Which tasks are waiting for me?"}' \
+  http://127.0.0.1:4100/v1/ask
+```
+
+Limits:
+
+- A question is at most 1000 characters.
+- At most 30 000 characters of task data are sent, most recently updated tasks first; the model
+  is told when some tasks were left out.
+- The provider has 20 seconds to answer (504 after that). An answer is at most 4000 characters.
+- At most 10 questions per minute for the whole server (429 with `Retry-After` after that). The
+  count resets when the server restarts.
+
+The server logs one line per question with the status code, counts and duration, never the
+question, the answer or the key. The answer is plain text written by a model from data agents
+sent: a client must show it as text, never as HTML.
 
 ## Run the MCP server
 
