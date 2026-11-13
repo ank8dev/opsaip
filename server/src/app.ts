@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { parseReport, type TaskStore } from '@opsaip/core';
+import { createAskService, NOT_CONFIGURED } from './ask';
 import { tokenProblem } from './auth/accessToken';
+import type { AskProvider } from './auth/askProvider';
 import { createRequestGuard, webFileForPath } from './auth/requestGuard';
 import { readWebFile } from './webFiles';
 
@@ -13,8 +15,14 @@ export interface AppOptions {
   token: string;
   /** The web app build (apps/web/dist). Without it, the web paths answer 404. */
   webDir?: string;
+  /** The AI model for POST /v1/ask (from auth/llm.ts). Without it, /v1/ask answers 503. */
+  ask?: AskProvider;
+  /** How long the model may take before /v1/ask answers 504. Defaults to ASK_TIMEOUT_MS. */
+  askTimeoutMs?: number;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
+  /** One line per /v1/ask request: status and counts only. Defaults to console.log. */
+  log?: (line: string) => void;
 }
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -23,6 +31,7 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  * Create the HTTP server. It is not listening yet: call server.listen(port, host).
  *
  *   POST /v1/reports  JSON StatusReport -> 200 { task } | 400 | 409 | 413 | 415
+ *   POST /v1/ask      { question } -> 200 { answer } | 400 | 413 | 415 | 429 | 502 | 503 | 504
  *   GET  /v1/tasks    200 { tasks }
  *   GET  /healthz     200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
@@ -35,11 +44,23 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  * before routing (so a 404 does not reveal which paths exist) and before
  * reading the body. Missing or wrong token -> 401.
  */
-export function createApp({ store, token, webDir, logError = defaultLogError }: AppOptions): Server {
+export function createApp({
+  store,
+  token,
+  webDir,
+  ask,
+  askTimeoutMs,
+  logError = defaultLogError,
+  log = defaultLog,
+}: AppOptions): Server {
   // Same rule as loadConfig, so no caller can start a server with a weak token.
   const problem = tokenProblem(token);
   if (problem !== undefined) throw new TypeError(problem);
   const mayProceed = createRequestGuard(token);
+  const answer =
+    ask === undefined
+      ? undefined
+      : createAskService({ provider: ask, tasks: () => store.all(), log, timeoutMs: askTimeoutMs });
   const routes: Record<string, Record<string, Handler>> = {
     '/healthz': {
       GET: (_req, res) => sendText(res, 200, 'ok'),
@@ -49,28 +70,10 @@ export function createApp({ store, token, webDir, logError = defaultLogError }: 
     },
     '/v1/reports': {
       POST: async (req, res) => {
-        if (!isJsonContentType(req.headers['content-type'])) {
-          // A browser can send a cross-site "simple" POST (text/plain, form)
-          // without a CORS preflight. Requiring JSON blocks that.
-          return sendJson(res, 415, { error: 'content-type must be application/json' });
-        }
+        const body = await readJsonBody(req, res);
+        if (!body.ok) return;
 
-        const body = await readBody(req, MAX_BODY_BYTES);
-        if (body === undefined) {
-          // Close the connection: the rest of an oversized body is not read.
-          return sendJson(res, 413, { error: `body must be at most ${MAX_BODY_BYTES} bytes` }, {
-            connection: 'close',
-          });
-        }
-
-        let input: unknown;
-        try {
-          input = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body));
-        } catch {
-          return sendJson(res, 400, { error: 'body must be valid JSON (UTF-8)' });
-        }
-
-        const parsed = parseReport(input);
+        const parsed = parseReport(body.input);
         if (!parsed.ok) return sendJson(res, 400, { error: parsed.reason });
 
         const result = store.apply(parsed.report);
@@ -79,7 +82,51 @@ export function createApp({ store, token, webDir, logError = defaultLogError }: 
         sendJson(res, 200, { task: result.task });
       },
     },
+    '/v1/ask': {
+      POST: async (req, res) => {
+        // Checked first: no reason to read a body that cannot be answered.
+        if (answer === undefined) return sendJson(res, 503, { error: NOT_CONFIGURED });
+
+        const body = await readJsonBody(req, res);
+        if (!body.ok) return;
+
+        const outcome = await answer(body.input);
+        sendJson(res, outcome.status, outcome.body, outcome.headers);
+      },
+    },
   };
+
+  /**
+   * Read a JSON request body, or send the error response (415, 413 or 400)
+   * and return ok: false.
+   */
+  async function readJsonBody(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<{ ok: true; input: unknown } | { ok: false }> {
+    if (!isJsonContentType(req.headers['content-type'])) {
+      // A browser can send a cross-site "simple" POST (text/plain, form)
+      // without a CORS preflight. Requiring JSON blocks that.
+      sendJson(res, 415, { error: 'content-type must be application/json' });
+      return { ok: false };
+    }
+
+    const body = await readBody(req, MAX_BODY_BYTES);
+    if (body === undefined) {
+      // Close the connection: the rest of an oversized body is not read.
+      sendJson(res, 413, { error: `body must be at most ${MAX_BODY_BYTES} bytes` }, {
+        connection: 'close',
+      });
+      return { ok: false };
+    }
+
+    try {
+      return { ok: true, input: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) };
+    } catch {
+      sendJson(res, 400, { error: 'body must be valid JSON (UTF-8)' });
+      return { ok: false };
+    }
+  }
 
   return createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
@@ -197,4 +244,8 @@ function send(
 
 function defaultLogError(message: string, error: unknown): void {
   console.error(message, error);
+}
+
+function defaultLog(line: string): void {
+  console.log(line);
 }
