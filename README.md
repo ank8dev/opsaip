@@ -49,7 +49,7 @@ opsaip/
 
 ## Run the web app
 
-Needs Node.js 20.19 or newer.
+Needs Node.js 22.13 or newer.
 
 ```bash
 npm install          # once, from the repository root
