@@ -5,25 +5,64 @@ import { createTaskStore, type AgentTask, type TaskStore } from '@opsaip/core';
  * A TaskStore kept in SQLite. The database is the only copy of the tasks:
  * nothing is cached in memory, so memory and disk can never disagree.
  *
- * The rules are not repeated here. Each apply() loads the one task it needs
+ * The rules are not repeated here. Each apply() or create() loads the one task it needs
  * into a short-lived core store (createTaskStore), lets core decide, and
- * saves the result, all in one transaction. Rows read back go through
+ * saves the result, all in one transaction. create() inserts only if core
+ * accepted the task, so an id that exists is never overwritten. Rows read back go through
  * createTaskStore too, which rejects malformed stored data.
  *
- * Unlike the in-memory store, apply() can throw: when the database itself
+ * Unlike the in-memory store, apply() and create() can throw: when the database itself
  * fails (disk full, I/O error, file locked by another process). Nothing is
  * saved then; the HTTP layer turns the error into a 500.
  */
 export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
-  const COLUMNS = 'id, status, updated_at AS updatedAt, title, agent, note';
+  const COLUMNS = 'id, status, updated_at AS updatedAt, title, agent, note, source';
   const selectOne = db.prepare(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`);
   const selectAll = db.prepare(`SELECT ${COLUMNS} FROM tasks ORDER BY seq`);
   const upsert = db.prepare(`
-    INSERT INTO tasks (id, status, updated_at, title, agent, note) VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, status, updated_at, title, agent, note, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (id) DO UPDATE SET
       status = excluded.status, updated_at = excluded.updated_at,
-      title = excluded.title, agent = excluded.agent, note = excluded.note
+      title = excluded.title, agent = excluded.agent, note = excluded.note,
+      source = excluded.source
   `);
+  // Plain INSERT for create(): if core ever let a duplicate id through, the
+  // UNIQUE constraint throws and nothing is overwritten.
+  const insert = db.prepare(`
+    INSERT INTO tasks (id, status, updated_at, title, agent, note, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const save = (statement: typeof upsert, task: AgentTask): void => {
+    // A field that is not set is stored as NULL (node:sqlite rejects undefined).
+    statement.run(
+      task.id,
+      task.status,
+      task.updatedAt,
+      task.title ?? null,
+      task.agent ?? null,
+      task.note ?? null,
+      task.source ?? null,
+    );
+  };
+
+  // BEGIN IMMEDIATE takes the write lock now, so read-check-write is atomic
+  // even if another process opens the same file.
+  const inTransaction = <R>(work: () => R): R => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {
+        // SQLite may have rolled back already (e.g. disk full). Keep the first error.
+      }
+      throw error;
+    }
+  };
 
   // Rows come back as plain records; createTaskStore validates them.
   const loadOne = (id: string): AgentTask[] => {
@@ -45,26 +84,23 @@ export function createSqliteTaskStore(db: DatabaseSync): TaskStore {
       // a query parameter. An empty core store rejects it with core's reason.
       if (typeof report?.taskId !== 'string') return createTaskStore().apply(report);
 
-      // IMMEDIATE takes the write lock now, so read-check-write is atomic even
-      // if another process opens the same file.
-      db.exec('BEGIN IMMEDIATE');
-      try {
+      return inTransaction(() => {
         const result = createTaskStore(loadOne(report.taskId)).apply(report);
-        if (result.ok) {
-          const { id, status, updatedAt, title, agent, note } = result.task;
-          // A field that is not set is stored as NULL (node:sqlite rejects undefined).
-          upsert.run(id, status, updatedAt, title ?? null, agent ?? null, note ?? null);
-        }
-        db.exec('COMMIT');
+        if (result.ok) save(upsert, result.task);
         return result;
-      } catch (error) {
-        try {
-          db.exec('ROLLBACK');
-        } catch {
-          // SQLite may have rolled back already (e.g. disk full). Keep the first error.
-        }
-        throw error;
-      }
+      });
+    },
+
+    create(input) {
+      // Malformed input (not an object, id not a string) cannot be used as a
+      // query parameter. An empty core store rejects it with core's reason.
+      if (typeof input?.id !== 'string') return createTaskStore().create(input);
+
+      return inTransaction(() => {
+        const result = createTaskStore(loadOne(input.id)).create(input);
+        if (result.ok) save(insert, result.task);
+        return result;
+      });
     },
   };
 }

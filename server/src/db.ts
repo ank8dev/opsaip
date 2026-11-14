@@ -21,6 +21,9 @@ const MIGRATIONS: readonly string[] = [
   `ALTER TABLE tasks ADD COLUMN title TEXT;
    ALTER TABLE tasks ADD COLUMN agent TEXT;
    ALTER TABLE tasks ADD COLUMN note  TEXT;`,
+  // 2 -> 3: who created the task ("you" for a task a person made). NULL
+  // means "not set", which is every task an agent created and every old row.
+  `ALTER TABLE tasks ADD COLUMN source TEXT;`,
 ];
 
 /** The schema this code reads and writes, stored in SQLite's PRAGMA user_version. */

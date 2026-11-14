@@ -129,6 +129,101 @@ describe('createSqliteTaskStore', () => {
     });
   });
 
+  describe('create', () => {
+    const mine = (id: string, extra: Record<string, string> = {}) => ({
+      id,
+      title: 'Fix login',
+      createdAt: T0,
+      source: 'you' as const,
+      ...extra,
+    });
+
+    it('gives the same result as the in-memory core store', () => {
+      const memory = createTaskStore();
+      const sqlite = createSqliteTaskStore(db);
+      const steps = [
+        mine('a'),
+        mine('a', { title: 'again' }), // taken
+        mine('b', { agent: 'codex' }),
+        mine(''), // malformed
+        mine('c', { createdAt: 'later' }),
+        null as never,
+        { id: 7 } as never,
+      ];
+      for (const input of steps) {
+        expect(sqlite.create(input), JSON.stringify(input)).toEqual(memory.create(input));
+        expect(sqlite.all()).toEqual(memory.all());
+      }
+    });
+
+    it('stores source, and later reports keep it', () => {
+      const store = createSqliteTaskStore(db);
+      expect(store.create(mine('a', { agent: 'codex' }))).toEqual({
+        ok: true,
+        task: { id: 'a', status: 'queued', updatedAt: T0, title: 'Fix login', agent: 'codex', source: 'you' },
+      });
+      expect(db.prepare('SELECT source FROM tasks').get()).toEqual({ source: 'you' });
+      store.apply(r('a', 'running', T1));
+      store.apply({ ...r('a', 'waiting_on_human', T2), note: 'which?' });
+      expect(db.prepare('SELECT source FROM tasks').get()).toEqual({ source: 'you' });
+      expect(store.get('a')).toMatchObject({ status: 'waiting_on_human', source: 'you' });
+    });
+
+    it('stores NULL for a task made by an agent', () => {
+      const store = createSqliteTaskStore(db);
+      store.apply(r('a', 'queued', T0));
+      expect(db.prepare('SELECT source FROM tasks').get()).toEqual({ source: null });
+      expect(Object.hasOwn(store.get('a')!, 'source')).toBe(false);
+    });
+
+    it('rejects a taken id and never overwrites the stored task', () => {
+      const store = createSqliteTaskStore(db);
+      store.apply({ ...r('a', 'queued', T0), title: 'From an agent' });
+      expect(store.create(mine('a'))).toEqual({ ok: false, reason: 'task already exists' });
+      expect(store.get('a')).toEqual({ id: 'a', status: 'queued', updatedAt: T0, title: 'From an agent' });
+      expect(db.isTransaction).toBe(false);
+    });
+
+    it('keeps creation order together with report-created tasks', () => {
+      const store = createSqliteTaskStore(db);
+      store.apply(r('zeta', 'queued', T0));
+      store.create(mine('alpha'));
+      store.apply(r('zeta', 'running', T1));
+      expect(store.all().map((t) => t.id)).toEqual(['zeta', 'alpha']);
+    });
+
+    it('keeps source after the database is closed and opened again', () => {
+      const first = createSqliteTaskStore(db);
+      first.create(mine('a'));
+      first.apply(r('a', 'running', T1));
+      db.close();
+
+      db = openDatabase(path);
+      expect(createSqliteTaskStore(db).get('a')).toEqual({
+        id: 'a',
+        status: 'running',
+        updatedAt: T1,
+        title: 'Fix login',
+        source: 'you',
+      });
+    });
+
+    it('throws, saves nothing and leaves no transaction open when the database fails', () => {
+      const store = createSqliteTaskStore(db);
+      db.exec("CREATE TRIGGER fail BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT, 'boom'); END");
+      expect(() => store.create(mine('a'))).toThrow('boom');
+      expect(db.isTransaction).toBe(false);
+      db.exec('DROP TRIGGER fail');
+      expect(store.all()).toEqual([]);
+      expect(store.create(mine('a')).ok).toBe(true);
+    });
+
+    it('refuses a stored row with an unknown source instead of serving it', () => {
+      db.prepare('INSERT INTO tasks (id, status, updated_at, source) VALUES (?, ?, ?, ?)').run('a', 'queued', T0, 'robot');
+      expect(() => createSqliteTaskStore(db).all()).toThrow(TypeError);
+    });
+  });
+
   describe('when the database fails during apply', () => {
     // A trigger makes the write itself fail, like a full disk would.
     const failOn = (event: 'INSERT' | 'UPDATE') =>
