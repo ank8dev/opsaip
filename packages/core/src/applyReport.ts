@@ -1,5 +1,18 @@
 import { canTransition, type AgentTaskStatus } from './agentTaskStatus';
 
+/**
+ * Where a task came from. Only "you": a person created it (POST /v1/tasks).
+ * A task made by an agent's first "queued" report has no source. A union of
+ * one literal on purpose: a later value is a deliberate change, and
+ * isTaskSource, copyTask and the database column must all learn it together.
+ */
+export type TaskSource = 'you';
+
+/** True if value is a TaskSource. Safe for any input. */
+export function isTaskSource(value: unknown): value is TaskSource {
+  return value === 'you';
+}
+
 /** The part of a task that applyReport reads. Any extra fields are kept as they are. */
 export interface AgentTask {
   id: string;
@@ -12,6 +25,11 @@ export interface AgentTask {
   agent?: string;
   /** About the current status (e.g. the question while waiting_on_human). Cleared on every status change. */
   note?: string;
+  /**
+   * Set once, when a person creates the task. A report can never set,
+   * change or clear it: applyReport keeps it, and StatusReport has no such field.
+   */
+  source?: TaskSource;
 }
 
 /** What an agent sends: "task X is now in status Y, as of time Z". */
@@ -43,7 +61,9 @@ export type ApplyReportResult<T extends AgentTask> =
  *   - title, agent: replace the task's value if the report has one, else kept;
  *   - note: describes the new status, so it replaces the old note, and a
  *     report without a note clears it. A question asked while
- *     waiting_on_human must not stay on the task once it is done.
+ *     waiting_on_human must not stay on the task once it is done;
+ *   - source: never touched. It comes along with `...task` and no report
+ *     field can change it.
  */
 export function applyReport<T extends AgentTask>(
   task: T,

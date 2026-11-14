@@ -133,6 +133,16 @@ describe('applyReport', () => {
     });
   });
 
+  describe('source', () => {
+    it('is kept by every accepted report, and a report cannot change or clear it', () => {
+      const mine: AgentTask = { ...task, source: 'you' };
+      const result = applyReport(mine, { ...report(), source: undefined } as StatusReport);
+      expect(result.ok && result.task.source).toBe('you');
+      const forged = applyReport(task, { ...report(), source: 'you' } as StatusReport);
+      expect(forged.ok && Object.hasOwn(forged.task, 'source')).toBe(false);
+    });
+  });
+
   describe('never throws', () => {
     it('rejects a report for another task', () => {
       const result = applyReport(task, report({ taskId: 'task-2' }));

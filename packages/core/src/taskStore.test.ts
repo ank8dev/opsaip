@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentTask, StatusReport } from './applyReport';
-import { createTaskStore } from './taskStore';
+import { createTaskStore, type CreateTaskInput } from './taskStore';
 
 const T0 = '2026-11-01T10:00:00.000Z';
 const T1 = '2026-11-01T10:05:00.000Z';
@@ -257,6 +257,11 @@ describe('createTaskStore', () => {
       expect(Object.hasOwn(store.get('task-1')!, 'note')).toBe(false);
     });
 
+    it('copies source of initial tasks', () => {
+      const mine: AgentTask = { ...running, source: 'you' };
+      expect(createTaskStore([mine]).get('task-1')).toEqual(mine);
+    });
+
     it.each([
       ['null', null],
       ['a string', 'task-1'],
@@ -270,6 +275,8 @@ describe('createTaskStore', () => {
       ['a null title', { id: 'task-1', status: 'queued', updatedAt: T0, title: null }],
       ['a numeric agent', { id: 'task-1', status: 'queued', updatedAt: T0, agent: 1 }],
       ['an object note', { id: 'task-1', status: 'queued', updatedAt: T0, note: {} }],
+      ['an unknown source', { id: 'task-1', status: 'queued', updatedAt: T0, source: 'agent' }],
+      ['a null source', { id: 'task-1', status: 'queued', updatedAt: T0, source: null }],
     ])('throws a TypeError for a task with %s', (_name, task) => {
       const tasks = [running, task] as unknown as AgentTask[];
       expect(() => createTaskStore(tasks)).toThrow(new TypeError('initial task 1 is malformed'));
@@ -281,5 +288,124 @@ describe('createTaskStore', () => {
         new TypeError('initial task 1 repeats an earlier id'),
       );
     });
+  });
+});
+
+describe('create', () => {
+  const input = (overrides: Partial<CreateTaskInput> = {}): CreateTaskInput => ({
+    id: 'mine-1',
+    title: 'Fix login',
+    createdAt: T0,
+    source: 'you',
+    ...overrides,
+  });
+
+  it('creates a queued task with source "you" and returns a copy', () => {
+    const store = createTaskStore();
+    const result = store.create(input({ agent: 'claude-code' }));
+    const created = {
+      id: 'mine-1',
+      status: 'queued',
+      updatedAt: T0,
+      title: 'Fix login',
+      agent: 'claude-code',
+      source: 'you',
+    };
+    expect(result).toEqual({ ok: true, task: created });
+    expect(store.get('mine-1')).toEqual(created);
+    expect(store.all()).toEqual([created]);
+    if (result.ok) result.task.title = 'changed';
+    expect(store.get('mine-1')?.title).toBe('Fix login');
+  });
+
+  it('leaves out agent when there is none, and keeps creation order', () => {
+    const store = createTaskStore();
+    store.apply(report({ taskId: 'first' }));
+    store.create(input());
+    expect(store.all().map((t) => t.id)).toEqual(['first', 'mine-1']);
+    expect(Object.hasOwn(store.get('mine-1')!, 'agent')).toBe(false);
+  });
+
+  it('rejects a taken id and never overwrites the existing task', () => {
+    const store = createTaskStore();
+    store.apply(report({ taskId: 'mine-1', title: 'Original', agent: 'a' }));
+    const before = store.all();
+    expect(store.create(input())).toEqual({ ok: false, reason: 'task already exists' });
+    expect(store.all()).toEqual(before);
+    // Also against a task that was itself created by create().
+    store.create(input({ id: 'mine-2' }));
+    expect(store.create(input({ id: 'mine-2', title: 'Other' }))).toEqual({
+      ok: false,
+      reason: 'task already exists',
+    });
+    expect(store.get('mine-2')?.title).toBe('Fix login');
+  });
+
+  it('a later agent report cannot reuse a created id to take it over, but updates it normally', () => {
+    const store = createTaskStore();
+    store.create(input());
+    // "queued" on an existing task is a transition queued -> queued: not allowed.
+    expect(store.apply(report({ taskId: 'mine-1', status: 'queued', at: T1 })).ok).toBe(false);
+    expect(store.get('mine-1')?.source).toBe('you');
+  });
+
+  it('keeps source across every later report', () => {
+    const store = createTaskStore();
+    store.create(input());
+    const T2 = '2026-11-01T10:10:00.000Z';
+    const T3 = '2026-11-01T10:15:00.000Z';
+    for (const [status, at, extra] of [
+      ['running', T1, { agent: 'codex' }],
+      ['waiting_on_human', T2, { note: 'which branch?' }],
+      ['running', T3, {}],
+    ] as const) {
+      const result = store.apply(report({ taskId: 'mine-1', status, at, ...extra }));
+      expect(result.ok).toBe(true);
+      expect(store.get('mine-1')?.source).toBe('you');
+    }
+    const done = store.apply(report({ taskId: 'mine-1', status: 'done', at: '2026-11-01T10:20:00.000Z' }));
+    expect(done.ok && done.task.source).toBe('you');
+    expect(store.get('mine-1')?.source).toBe('you');
+  });
+
+  it('a report with a source field cannot set it on a new or an existing task', () => {
+    const store = createTaskStore();
+    store.apply({ ...report({ taskId: 'agent-made' }), source: 'you' } as StatusReport);
+    expect(Object.hasOwn(store.get('agent-made')!, 'source')).toBe(false);
+    store.apply({ ...report({ taskId: 'agent-made', status: 'running', at: T1 }), source: 'you' } as StatusReport);
+    expect(Object.hasOwn(store.get('agent-made')!, 'source')).toBe(false);
+  });
+
+  it('keeps source on a retry cycle (failed -> queued)', () => {
+    const store = createTaskStore();
+    store.create(input());
+    store.apply(report({ taskId: 'mine-1', status: 'running', at: T1 }));
+    store.apply(report({ taskId: 'mine-1', status: 'failed', at: '2026-11-01T10:10:00.000Z' }));
+    store.apply(report({ taskId: 'mine-1', status: 'queued', at: '2026-11-01T10:15:00.000Z' }));
+    expect(store.get('mine-1')).toMatchObject({ status: 'queued', source: 'you' });
+  });
+
+  it.each([
+    ['null', null, 'task must be an object'],
+    ['a string', 'x', 'task must be an object'],
+    ['a missing id', { ...{ title: 't', createdAt: T0, source: 'you' } }, 'id must be a string'],
+    ['an empty id', { id: '', title: 't', createdAt: T0, source: 'you' }, 'id must not be empty'],
+    ['a blank title', { id: 'a', title: '  ', createdAt: T0, source: 'you' }, 'title must not be only whitespace'],
+    ['a numeric title', { id: 'a', title: 1, createdAt: T0, source: 'you' }, 'title must be a string'],
+    ['a null agent', { id: 'a', title: 't', agent: null, createdAt: T0, source: 'you' }, 'agent must be a string'],
+    ['a bad time', { id: 'a', title: 't', createdAt: 'later', source: 'you' }, 'invalid timestamp'],
+    ['a missing time', { id: 'a', title: 't', source: 'you' }, 'invalid timestamp'],
+    ['an unknown source', { id: 'a', title: 't', createdAt: T0, source: 'agent' }, 'source is not valid'],
+    ['a missing source', { id: 'a', title: 't', createdAt: T0 }, 'source is not valid'],
+  ])('rejects %s and creates nothing', (_name, bad, reason) => {
+    const store = createTaskStore();
+    expect(store.create(bad as unknown as CreateTaskInput)).toEqual({ ok: false, reason });
+    expect(store.all()).toEqual([]);
+  });
+
+  it('does not treat "toString" or "__proto__" as a taken id', () => {
+    const store = createTaskStore();
+    expect(store.create(input({ id: 'toString' })).ok).toBe(true);
+    expect(store.create(input({ id: '__proto__' })).ok).toBe(true);
   });
 });
