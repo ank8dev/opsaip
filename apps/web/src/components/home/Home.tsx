@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { rise } from '../../styles/motion';
@@ -30,7 +30,6 @@ function HomeColumn() {
     <div
       className="op-col"
       data-tray={ui.trayOpen ? 'open' : 'closed'}
-      data-mode={task ? 'card' : undefined}
       hidden={ui.settingsOpen}
     >
       <ChatThread chat={chat} />
@@ -38,12 +37,12 @@ function HomeColumn() {
 
       <motion.div className="op-composer-wrap" {...rise(t, 2)}>
         <div className="op-tray" data-open={ui.trayOpen}>
-          {task && <TaskCard key={task.id} task={task} />}
           <TrayList />
           <TrayBar />
         </div>
         <Composer task={task} chat={chat} />
       </motion.div>
+      <AnimatePresence>{task && <TaskCard key="task-window" task={task} />}</AnimatePresence>
     </div>
   );
 }

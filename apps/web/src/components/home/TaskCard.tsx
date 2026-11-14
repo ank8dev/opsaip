@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import type { AnyTask, ChatMessage } from '../../types';
 import { isLocal } from '../../types';
@@ -7,65 +6,42 @@ import { useUi } from '../../state/ui';
 import { listItem } from '../../styles/motion';
 import { StatusDot } from '../common/StatusDot';
 import { LinkedItems } from './LinkedItems';
+import { TaskOverlay } from './TaskOverlay';
 
-/** One task, opened above the composer: what the agent was asked and what it did. */
+/**
+ * One task in the task window: what the agent was asked and what it did.
+ * The window itself (backdrop, Esc, focus) is TaskOverlay.
+ */
 export function TaskCard({ task }: { task: AnyTask }) {
   const { people, messagesFor } = useWorkspace();
-  const ui = useUi();
-  const t = ui.motion;
-  const backRef = useRef<HTMLButtonElement>(null);
   const owner = isLocal(task) ? undefined : people[task.owner];
   const meta = [isLocal(task) ? 'You' : owner?.name, task.tool].filter(Boolean).join(' · ');
 
-  useEffect(() => { backRef.current?.focus({ preventScroll: true }); }, [task.id]);
-
-  // Escape closes the task, unless you are typing.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName ?? '';
-      if (e.key === 'Escape' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
-        e.stopPropagation();
-        ui.closeTask();
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [ui]);
-
   return (
-    <motion.section
-      className="op-card"
-      aria-label="Task"
-      initial={{ opacity: 0, y: t.dist, filter: `blur(${t.blur}px)` }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      transition={{ duration: t.slow, ease: t.easeOut }}
-    >
-      <div className="op-card-chat">
-        <div className="op-card-head op-grid">
-          <button ref={backRef} type="button" className="op-back" aria-label="Close task" onClick={ui.closeTask}>
-            <span />
-          </button>
-          <span className="op-title">{task.task}</span>
-          <span className="op-c3">{task.source && <span className="op-tag">{task.source}</span>}</span>
-          <span className="op-c4" style={task.status === 'Failed' ? { color: 'var(--op-error)' } : undefined}>
+    <TaskOverlay
+      label="Task"
+      title={
+        <>
+          <span className="op-overlay-name">{task.task}</span>
+          {task.source && <span className="op-tag">{task.source}</span>}
+          <span className="op-overlay-status" style={task.status === 'Failed' ? { color: 'var(--op-error)' } : undefined}>
             <StatusDot status={task.status} className="op-card-dot" />
             {task.status}
           </span>
-        </div>
-        <div className="op-card-meta">
-          {meta}
-          {meta && task.detail && ' · '}
-          {task.detail && <span className="op-note">{task.detail}</span>}
-        </div>
-        <div className="op-scroll op-card-scroll">
-          {!isLocal(task) && <LinkedItems task={task} />}
-          <Chat messages={messagesFor(task)} you={owner?.name ?? 'You'} agent={task.source || 'Agent'} />
-          <div className="op-chat-foot">
-            {isLocal(task) ? 'Started here · not saved yet' : task.source ? `Exported from ${task.source} · read only` : 'Read only'}
-          </div>
-        </div>
+        </>
+      }
+    >
+      <div className="op-card-meta">
+        {meta}
+        {meta && task.detail && ' · '}
+        {task.detail && <span className="op-note">{task.detail}</span>}
       </div>
-    </motion.section>
+      {!isLocal(task) && <LinkedItems task={task} />}
+      <Chat messages={messagesFor(task)} you={owner?.name ?? 'You'} agent={task.source || 'Agent'} />
+      <div className="op-chat-foot">
+        {isLocal(task) ? 'Started here · not saved yet' : task.source ? `Exported from ${task.source} · read only` : 'Read only'}
+      </div>
+    </TaskOverlay>
   );
 }
 

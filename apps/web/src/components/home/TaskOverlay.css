@@ -1,0 +1,20 @@
+/* The task window: a dialog over the page, which is dimmed behind it. */
+.op-overlay {
+  position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--op-scrim); overscroll-behavior: contain;
+}
+.op-overlay-win {
+  width: min(640px, 100%); max-height: 100%; display: flex; flex-direction: column; min-height: 0;
+  background: var(--op-surface); color: var(--op-text); border: 1px solid var(--op-border); border-radius: 18px;
+  box-shadow: var(--op-shadow-pop); overflow: hidden;
+}
+.op-overlay-win:focus { outline: none; }
+.op-overlay-head { display: flex; align-items: center; gap: 8px; padding: 12px 20px 0 12px; flex: none; }
+.op-overlay-title { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; line-height: 24px; font-weight: 500; }
+.op-overlay-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-overlay-status { margin-left: auto; flex: none; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 400; color: var(--op-text-secondary); }
+.op-overlay-title .op-tag { flex: none; }
+.op-overlay-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
+@media (max-width: 480px) {
+  .op-overlay { padding: 12px; }
+}
