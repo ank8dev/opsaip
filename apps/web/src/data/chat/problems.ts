@@ -33,7 +33,7 @@ export type Problem =
   | 'bad-response';  // 2xx that does not match the contract
 
 /** The calls this app makes. Each maps statuses to problems in its own way. */
-export type Action = 'createTask' | 'conductor' | 'startRun' | 'getRun' | 'transcript' | 'permission' | 'message' | 'cancel';
+export type Action = 'createTask' | 'conductor' | 'startRun' | 'getRun' | 'transcript' | 'capabilities' | 'upload' | 'permission' | 'message' | 'cancel';
 
 /** Status -> problem, per action. Any status not listed is a 'server-error'. */
 export const STATUS_PROBLEM: Record<Action, Readonly<Record<number, Problem>>> = {
@@ -45,6 +45,8 @@ export const STATUS_PROBLEM: Record<Action, Readonly<Record<number, Problem>>> =
   },
   getRun: { 401: 'unauthorized', 404: 'not-found', 503: 'conductor-off' },
   transcript: { 401: 'unauthorized', 404: 'not-found', 503: 'conductor-off' },
+  capabilities: { 401: 'unauthorized' },
+  upload: { 400: 'bad-request', 401: 'unauthorized', 413: 'too-large', 415: 'unsupported' },
   permission: {
     400: 'bad-request', 401: 'unauthorized', 404: 'not-found', 409: 'stale', 413: 'too-large', 415: 'unsupported',
     503: 'conductor-off',

@@ -18,6 +18,8 @@ export interface TranscriptEntry {
   text: string;
   /** ISO time. */
   at: string;
+  /** Files sent with this message (display only: name as text, kind, size). */
+  attachments?: { name: string; kind: 'image' | 'video' | 'pdf' | 'text'; size: number }[];
 }
 
 export interface Transcript {
@@ -37,6 +39,20 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+const FILE_KINDS: readonly unknown[] = ['image', 'video', 'pdf', 'text'];
+/** At most this many attachment chips are read per message. */
+const MAX_FILES_PER_ENTRY = 10;
+
+function parseEntryFiles(value: unknown): NonNullable<TranscriptEntry['attachments']> {
+  if (!Array.isArray(value)) return [];
+  const out: NonNullable<TranscriptEntry['attachments']> = [];
+  for (const f of value.slice(0, MAX_FILES_PER_ENTRY)) {
+    if (!isRecord(f) || typeof f.name !== 'string' || !FILE_KINDS.includes(f.kind) || typeof f.size !== 'number') continue;
+    out.push({ name: f.name.slice(0, 200), kind: f.kind as 'image' | 'video' | 'pdf' | 'text', size: f.size });
+  }
+  return out;
+}
+
 /** Read `{ transcript }` from a 2xx body. An entry that breaks the contract is skipped. undefined: not a transcript. */
 export function parseTranscriptResponse(body: unknown): Transcript | undefined {
   if (!isRecord(body) || !isRecord(body.transcript)) return undefined;
@@ -49,7 +65,10 @@ export function parseTranscriptResponse(body: unknown): Transcript | undefined {
     if (typeof id !== 'number' || !Number.isInteger(id)) continue;
     if (!(ROLES as readonly unknown[]).includes(role) || !(KINDS as readonly unknown[]).includes(kind)) continue;
     if (typeof text !== 'string' || typeof at !== 'string') continue;
-    entries.push({ id, role: role as TranscriptEntry['role'], kind: kind as TranscriptEntry['kind'], text: text.slice(0, MAX_ENTRY_CHARS), at });
+    const entry: TranscriptEntry = { id, role: role as TranscriptEntry['role'], kind: kind as TranscriptEntry['kind'], text: text.slice(0, MAX_ENTRY_CHARS), at };
+    const files = parseEntryFiles(raw.attachments);
+    if (files.length > 0) entry.attachments = files;
+    entries.push(entry);
   }
   return {
     entries: entries.slice(-MAX_ENTRIES),

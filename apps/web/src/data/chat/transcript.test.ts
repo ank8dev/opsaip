@@ -39,6 +39,16 @@ describe('parseTranscriptResponse', () => {
   });
 });
 
+describe('attachments in the history', () => {
+  it('reads the files of a message as chips, dropping broken ones', () => {
+    const t = parseTranscriptResponse(body({ entries: [entry(1, { role: 'you', kind: 'prompt', attachments: [
+      { name: 'a.png', kind: 'image', size: 10 }, { name: 5, kind: 'image', size: 1 }, { name: 'b', kind: 'exe', size: 1 }, 'x',
+    ] }), entry(2)] }))!;
+    expect(t.entries[0].attachments).toEqual([{ name: 'a.png', kind: 'image', size: 10 }]);
+    expect(t.entries[1].attachments).toBeUndefined();
+  });
+});
+
 describe('canSendFollowUp', () => {
   const t = (finished: boolean, canResume: boolean) => ({ entries: [], finished, canResume, truncated: false });
   it('is on while active, and after the end only when it can resume', () => {

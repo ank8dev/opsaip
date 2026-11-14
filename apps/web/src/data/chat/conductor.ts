@@ -129,8 +129,10 @@ export function fetchConductorStatus(token: string, signal: AbortSignal, fetchIm
 }
 
 /** POST /v1/runs: the title is the first line of `text`, the prompt is all of it. */
-export function startRun(token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch): Promise<ApiResult<Run>> {
-  return startRunExact(token, { title: runTitleFrom(text), prompt: text }, signal, fetchImpl);
+export function startRun(
+  token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch, attachments: readonly string[] = [],
+): Promise<ApiResult<Run>> {
+  return startRunExact(token, { title: runTitleFrom(text), prompt: text, attachments }, signal, fetchImpl);
 }
 
 /**
@@ -139,7 +141,7 @@ export function startRun(token: string, text: string, signal: AbortSignal, fetch
  * is a 'bad-request' without a request.
  */
 export async function startRunExact(
-  token: string, run: { title: string; prompt: string }, signal: AbortSignal, fetchImpl?: typeof fetch,
+  token: string, run: { title: string; prompt: string; /** Upload ids (purpose agent). */ attachments?: readonly string[] }, signal: AbortSignal, fetchImpl?: typeof fetch,
 ): Promise<ApiResult<Run>> {
   const problem = promptProblem(run.prompt);
   if (problem !== undefined) return { ok: false, problem: 'bad-request', reason: problem };
@@ -147,7 +149,7 @@ export async function startRunExact(
     return { ok: false, problem: 'bad-request', reason: `a title is 1 to ${RUN_TITLE_MAX} characters.` };
   }
   return callApi({
-    token, action: 'startRun', path: RUNS_PATH, method: 'POST', json: { title: run.title, prompt: run.prompt },
+    token, action: 'startRun', path: RUNS_PATH, method: 'POST', json: { title: run.title, prompt: run.prompt, ...(run.attachments && run.attachments.length > 0 ? { attachments: run.attachments } : {}) },
     signal, fetchImpl, parse: parseRunResponse,
   });
 }
@@ -168,11 +170,13 @@ export function answerPermission(
 }
 
 /** POST /v1/runs/:id/message: a follow-up while the run is active. A 409 is the problem 'ended'. */
-export async function sendFollowUp(token: string, id: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch): Promise<ApiResult<Run>> {
+export async function sendFollowUp(
+  token: string, id: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch, attachments: readonly string[] = [],
+): Promise<ApiResult<Run>> {
   const problem = promptProblem(text);
   if (problem !== undefined) return { ok: false, problem: 'bad-request', reason: problem };
   return callApi({
-    token, action: 'message', path: runPath(id, '/message'), method: 'POST', json: { text }, signal, fetchImpl, parse: parseRunResponse,
+    token, action: 'message', path: runPath(id, '/message'), method: 'POST', json: attachments.length > 0 ? { text, attachments } : { text }, signal, fetchImpl, parse: parseRunResponse,
   });
 }
 

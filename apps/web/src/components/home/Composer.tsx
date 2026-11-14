@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { AnyTask, LocalTask } from '../../types';
 import { isLocal } from '../../types';
 import { clockFor, firstName } from '../../data/selectors';
+import { acceptAttribute, providerLine, type AttachPurpose } from '../../data/attachments/capabilities';
+import { AttachmentChips } from './AttachmentChips';
+import { useAttachments, useCapabilities } from './useAttachments';
 import { LOCAL_PREFIX, useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { ASK_MAX_QUESTION } from '../../data/chat/ask';
@@ -29,9 +32,11 @@ interface ComposerProps {
 
 /** Where you talk to Opsaip: ask Opsy, create a task, message a teammate, start an agent, or announce. */
 export function Composer({ task, chat }: ComposerProps) {
-  const { ws, people, addLocalTask, changeTask, addMessage, readOnly } = useWorkspace();
+  const { ws, people, addLocalTask, changeTask, addMessage, readOnly, api } = useWorkspace();
   const ui = useUi();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
 
   const [mode, setMode] = useState<ComposeMode>('ask');
   const [personId, setPersonId] = useState(ws.team[0]?.id ?? '');
@@ -49,6 +54,16 @@ export function Composer({ task, chat }: ComposerProps) {
   const askBusy = chat.busy;
   const viaSlack = mode === 'message' || mode === 'announce';
   const canSend = !viaSlack || slackOk;
+
+  // Files: what the server lists for where this message goes (Ask, or Agent mode when it is on).
+  const caps = useCapabilities(api, readOnly);
+  const purpose: AttachPurpose | null = !readOnly ? null : asking ? 'ask' : liveAgent && chat.conductor.state === 'on' ? 'agent' : null;
+  const place = purpose === 'agent' ? caps.agent : caps.ask;
+  const files = useAttachments(api, purpose, place);
+  const canAttach = purpose !== null && place.enabled;
+  const askLine = purpose === 'ask' ? providerLine(caps) : null;
+
+  const hasFiles = (e: { dataTransfer: DataTransfer | null }) => [...(e.dataTransfer?.types ?? [])].includes('Files');
 
   // Opening a task points the composer at it: a message to its owner.
   // Closing it brings back the mode you had before.
@@ -122,19 +137,25 @@ export function Composer({ task, chat }: ComposerProps) {
   }
 
   /** Live Task or Agent: clear the box only once the server took it, so a refusal does not lose your text. */
-  function sendLive(go: (value: string) => Promise<boolean>, value: string) {
-    void go(value).then((ok) => { if (ok) setText((now) => (now.trim() === value ? '' : now)); });
+  function sendLive(go: (value: string, files: readonly string[]) => Promise<boolean>, value: string) {
+    const ids = files.ids;
+    void go(value, ids).then((ok) => {
+      if (!ok) return;
+      setText((now) => (now.trim() === value ? '' : now));
+      files.clear(false); // the server used them
+    });
   }
 
   function submit() {
     const value = text.trim();
-    if (!value || !canSend) return;
+    if (!value || !canSend || files.uploading) return;
     if (asking) {
       if (askBusy) return;
-      chat.send(value);
+      chat.send(value, files.ids);
+      files.clear(false);
     } else if (liveTask || liveAgent) {
       if (askBusy || (liveAgent && chat.conductor.state !== 'on')) return;
-      sendLive(liveTask ? chat.createTask : following ? chat.followUp : chat.startRun, value);
+      sendLive(liveTask ? (v) => chat.createTask(v) : following ? chat.followUp : chat.startRun, value);
       inputRef.current?.focus();
       return;
     } else if (mode === 'message') {
@@ -222,7 +243,18 @@ export function Composer({ task, chat }: ComposerProps) {
   return (
     <div className="op-glowbox">
       <div className="op-ring">
-        <div className="op-composer">
+        <div
+          className="op-composer"
+          data-drop={dropping || undefined}
+          onDragOver={(e) => { if (canAttach && hasFiles(e)) { e.preventDefault(); setDropping(true); } }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false); }}
+          onDrop={(e) => {
+            setDropping(false);
+            if (!canAttach || !hasFiles(e)) return;
+            e.preventDefault();
+            files.add([...e.dataTransfer.files]);
+          }}
+        >
           <div className="op-to">
             <span>{liveTask ? 'Add to' : TO[mode]}</span>
             {liveTask && <span className="op-to-v">your server’s tasks</span>}
@@ -249,6 +281,8 @@ export function Composer({ task, chat }: ComposerProps) {
               </>
             )}
           </div>
+          {canAttach && <AttachmentChips items={files.items} onRemove={files.remove} />}
+          {canAttach && files.notice !== '' && <p className="op-attach-warn" role="alert">{files.notice}</p>}
           <label htmlFor="op-input" className="op-sr-only">{LABEL[mode]}</label>
           <textarea
             ref={inputRef}
@@ -259,6 +293,10 @@ export function Composer({ task, chat }: ComposerProps) {
             maxLength={asking ? ASK_MAX_QUESTION : liveTask ? TASK_TITLE_MAX : liveAgent ? RUN_PROMPT_MAX : undefined}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const pasted = [...e.clipboardData.files];
+              if (canAttach && pasted.length > 0) { e.preventDefault(); files.add(pasted); }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
@@ -271,12 +309,26 @@ export function Composer({ task, chat }: ComposerProps) {
               mode={mode}
               onChange={changeMode}
             />
+            {canAttach && (
+              <>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  accept={acceptAttribute(place)}
+                  onChange={(e) => { files.add([...(e.target.files ?? [])]); e.target.value = ''; }}
+                />
+                <button type="button" className="op-plus" aria-label="Attach files" title="Attach files" onClick={() => fileInput.current?.click()}>+</button>
+              </>
+            )}
             {task && <QuickActions task={task} prefill={prefill} />}
             <span className="op-note" data-flash={ui.hint.flash} title={ui.hint.text} aria-live="polite">{ui.hint.text}</span>
-            <button type="button" className="op-btn" disabled={!text.trim() || !canSend || (readOnly && askBusy)} onClick={submit}>
+            <button type="button" className="op-btn" disabled={!text.trim() || !canSend || files.uploading || (readOnly && askBusy)} onClick={submit}>
               {following ? 'Send' : VERB[mode]}
             </button>
           </div>
+          {askLine !== null && <p className="op-attach-line">{askLine}</p>}
         </div>
       </div>
     </div>

@@ -183,12 +183,12 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
 
   /** Agent mode, no run active: start one. Resolves true if it started. */
   const startRun = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, attachments: readonly string[] = []): Promise<boolean> => {
       if (track.current !== null) return false;
       ui.closeTask(); // the thread is hidden while a task is open
       say(text);
       const waiting = push({ kind: 'text', text: 'Starting Claude Code…' }, true);
-      const result = await request((signal) => api.startRun(text, signal));
+      const result = await request((signal) => api.startRun(text, signal, attachments));
       if (result === undefined) return false;
       if (!result.ok) {
         patch(waiting, () => problemReply(result.problem, result.reason));
@@ -237,8 +237,8 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
    * the request was abandoned.
    */
   const sendToRun = useCallback(
-    async (runId: string, title: string, text: string) => {
-      const result = await request((signal) => api.followUp(runId, text, signal), { quiet: true });
+    async (runId: string, title: string, text: string, attachments: readonly string[] = []) => {
+      const result = await request((signal) => api.followUp(runId, text, signal, attachments), { quiet: true });
       if (result?.ok) {
         remember(result.value.taskId, runId);
         if (track.current === null && isRunActive(result.value.status)) {
@@ -260,12 +260,12 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
 
   /** Agent mode while a run is active: your text goes to the agent. Resolves true if it was sent. */
   const followUp = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, attachments: readonly string[] = []): Promise<boolean> => {
       const t = track.current;
       if (t === null) return false;
       ui.closeTask();
       say(text);
-      const result = await request((signal) => api.followUp(t.id, text, signal));
+      const result = await request((signal) => api.followUp(t.id, text, signal, attachments));
       if (result === undefined) return false;
       if (!result.ok) {
         push(problemReply(result.problem, result.reason));
