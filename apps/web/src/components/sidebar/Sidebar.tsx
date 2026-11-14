@@ -6,14 +6,14 @@ import { useUi, type Section } from '../../state/ui';
 import { rise, slideIn } from '../../styles/motion';
 import { Wordmark } from '../common/Logo';
 import { Face } from '../common/Face';
-import { AgentsIcon, McpIcon, RepoIcon, TeamIcon } from '../common/Icons';
+import { AgentsIcon, ChatIcon, McpIcon, RepoIcon, TeamIcon } from '../common/Icons';
 import { AgentsSection } from './AgentsSection';
 import { TeamSection } from './TeamSection';
 import { McpSection } from './McpSection';
 import { RepoSection } from './RepoSection';
 import './Sidebar.css';
 
-const SECTIONS: { key: Section; title: string; Icon: typeof AgentsIcon; View: typeof AgentsSection }[] = [
+const SECTIONS: { key: Exclude<Section, 'chat'>; title: string; Icon: typeof AgentsIcon; View: typeof AgentsSection }[] = [
   { key: 'agents', title: 'Agents', Icon: AgentsIcon, View: AgentsSection },
   { key: 'team', title: 'Team', Icon: TeamIcon, View: TeamSection },
   { key: 'mcp', title: 'MCP', Icon: McpIcon, View: McpSection },
@@ -32,18 +32,19 @@ export function Sidebar() {
 
   const counts = navCounts(ws, tasks);
   const searching = !!ui.query.trim();
-  const searchAll = !ui.section && searching; // searching from the section list looks through all
+  const listing = ui.section === 'chat'; // the section list is showing, not one section
+  const searchAll = listing && searching; // searching from the section list looks through all
 
   // Focus follows the move: into a section → its back button; back out → the item you came from.
   useEffect(() => {
-    if (ui.section) {
+    if (!listing) {
       backRef.current?.focus({ preventScroll: true });
       lastSection.current = ui.section;
     } else if (lastSection.current) {
       navRefs.current[lastSection.current]?.focus({ preventScroll: true });
       lastSection.current = null;
     }
-  }, [ui.section]);
+  }, [ui.section, listing]);
 
   // "/" jumps to search; Escape clears it, or leaves the open section.
   useEffect(() => {
@@ -56,13 +57,13 @@ export function Sidebar() {
       } else if (e.key === 'Escape' && el === searchRef.current) {
         ui.setQuery('');
         searchRef.current?.blur();
-      } else if (e.key === 'Escape' && ui.section && !typing && !ui.openTaskId && !ui.settingsOpen) {
-        ui.setSection(null);
+      } else if (e.key === 'Escape' && !listing && !typing && !ui.openTaskId && !ui.settingsOpen) {
+        ui.setSection('chat');
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [ui]);
+  }, [ui, listing]);
 
   const open = SECTIONS.find((s) => s.key === ui.section);
 
@@ -87,8 +88,17 @@ export function Sidebar() {
       </motion.label>
 
       <AnimatePresence mode="popLayout">
-        {!ui.section && !searchAll && (
+        {listing && !searchAll && (
           <motion.nav key="nav" className="op-nav" aria-label="Sections" {...slideIn(t, -1)} exit={{ opacity: 0, transition: { duration: t.fast } }}>
+            <button
+              type="button"
+              className="op-nav-item"
+              aria-current={!ui.settingsOpen && !ui.openTaskId ? 'page' : undefined}
+              onClick={() => { ui.setSettingsOpen(false); ui.closeTask(); }}
+            >
+              <ChatIcon className="op-nav-ico" />
+              <span>Chat</span>
+            </button>
             {SECTIONS.map(({ key, title, Icon }) => (
               <button
                 key={key}
@@ -111,7 +121,7 @@ export function Sidebar() {
         {open && (
           <motion.div key={open.key} {...slideIn(t, 1)}>
             <div className="op-sv-head">
-              <button ref={backRef} type="button" className="op-back" aria-label="Back to sections" onClick={() => ui.setSection(null)}>
+              <button ref={backRef} type="button" className="op-back" aria-label="Back to sections" onClick={() => ui.setSection('chat')}>
                 <span />
               </button>
               <span className="op-sv-title">{open.title}</span>

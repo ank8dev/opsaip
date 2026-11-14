@@ -7,7 +7,7 @@ import type { ToolName } from '../types';
 import type { TrayLevel } from '../data/selectors';
 import { readMotionTokens, type MotionTokens } from '../styles/motion';
 
-export type Section = 'agents' | 'team' | 'mcp' | 'repo';
+export type Section = 'chat' | 'agents' | 'team' | 'mcp' | 'repo';
 export type ThemeChoice = 'system' | 'light' | 'dark';
 export type MotionChoice = 'system' | 'reduce';
 
@@ -27,8 +27,9 @@ interface UiValue {
   trayLevel: TrayLevel;
   setTrayLevel: (l: TrayLevel) => void;
 
-  section: Section | null;
-  setSection: (s: Section | null) => void;
+  /** The open sidebar section. 'chat' is the main screen: the sidebar then shows its list of sections. */
+  section: Section;
+  setSection: (s: Section) => void;
   query: string;
   setQuery: (q: string) => void;
 
@@ -109,7 +110,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [userName, setUserName] = useState('You');
   const [statusOwner, setStatusOwner] = useState<ToolName>('GitHub');
   const [trayLevel, setTrayLevel] = useState<TrayLevel>('high');
-  const [section, setSection] = useState<Section | null>(null);
+  const [section, setSection] = useState<Section>('chat');
   const [query, setQuery] = useState('');
   const [trayOpen, setTrayOpen] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);

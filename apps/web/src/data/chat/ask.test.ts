@@ -60,7 +60,7 @@ describe('askQuestion: every status maps to one problem', () => {
   });
 
   it('a 429 without a usable Retry-After has none', async () => {
-    for (const h of [{}, { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' }, { 'retry-after': '-5' }, { 'retry-after': '' }]) {
+    for (const h of [{}, { 'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT' }, { 'retry-after': '-5' }, { 'retry-after': '' }] as Record<string, string>[]) {
       const { impl } = fakeFetch(json(429, {}, h));
       expect(await askQuestion('t', 'q', signal, impl)).toEqual({ ok: false, problem: 'rate-limited' });
     }
