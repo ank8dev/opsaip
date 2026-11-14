@@ -11,7 +11,7 @@ export function MiniTask({ task }: { task: AnyTask }) {
       className={`op-mini${task.status === 'Failed' ? ' op-fail' : ''}`}
       onClick={() => openTask(task.id)}
     >
-      <StatusDot status={task.status} batonKey={task.id} />
+      <StatusDot status={task.status} />
       <span className="op-mini-title">{task.task}</span>
       <span className="op-mini-status">{task.status}</span>
     </button>

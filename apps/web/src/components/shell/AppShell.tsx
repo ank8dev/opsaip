@@ -1,23 +1,20 @@
-import { useRef } from 'react';
 import { motion } from 'motion/react';
 import { useUi } from '../../state/ui';
 import { rise } from '../../styles/motion';
 import { Sidebar } from '../sidebar/Sidebar';
 import { Home } from '../home/Home';
 import { Settings } from '../settings/Settings';
-import { Baton } from '../conductor/Baton';
 import { SettingsIcon } from '../common/Icons';
 import { ConnectionBadge } from './ConnectionBadge';
 import './AppShell.css';
 
-/** The whole app: sidebar | main column, plus the baton floating over both. */
+/** The whole app: sidebar | main column. */
 export function AppShell() {
   const ui = useUi();
-  const rootRef = useRef<HTMLElement>(null);
   const themeLabel = ui.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
   return (
-    <section ref={rootRef} className="op-home" aria-label="Opsaip home">
+    <section className="op-home" aria-label="Opsaip home">
       {/* Desktop app only (CSS): the strip that drags the window. */}
       <div className="op-drag" aria-hidden="true" />
       <Sidebar />
@@ -50,8 +47,6 @@ export function AppShell() {
         <Home />
         <Settings />
       </main>
-
-      <Baton rootRef={rootRef} />
     </section>
   );
 }

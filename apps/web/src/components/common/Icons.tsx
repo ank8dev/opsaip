@@ -28,6 +28,21 @@ export const AgentsIcon = ({ className }: P) => (
   </Icon>
 );
 
+export const ChatIcon = ({ className }: P) => (
+  <Icon className={className}>
+    <path d="M2.25 4.5a2.25 2.25 0 0 1 2.25-2.25h7a2.25 2.25 0 0 1 2.25 2.25v4.75a2.25 2.25 0 0 1-2.25 2.25H7l-3 2.5v-2.5h0a1.75 1.75 0 0 1-1.75-1.75z" />
+    <path d="M5.5 5.75h5M5.5 8h3" />
+  </Icon>
+);
+
+export const AskIcon = ({ className }: P) => (
+  <Icon className={className}>
+    <circle cx="8" cy="8" r="5.75" />
+    <path d="M6.25 6.4a1.85 1.85 0 1 1 2.7 1.65c-.6.3-.95.7-.95 1.4" />
+    <circle cx="8" cy="11.6" r=".6" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
 export const TeamIcon = ({ className }: P) => (
   <Icon className={className}>
     <circle cx="6" cy="6" r="2.5" />

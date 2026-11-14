@@ -5,7 +5,8 @@
 import type { Task, TaskStatus } from '../types';
 import type { ConnectionLabel } from './connectionView';
 
-export type OpsyState = 'question' | 'error' | 'working' | 'done' | 'idle' | 'offline';
+// `hello` is not a focus: opsyFocus() never returns it. The chat shows it next to a brief.
+export type OpsyState = 'question' | 'error' | 'working' | 'done' | 'idle' | 'offline' | 'hello';
 
 export interface OpsyFocus {
   /** The task Opsy points at; null for idle and offline. */

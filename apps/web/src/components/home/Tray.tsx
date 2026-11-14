@@ -37,7 +37,7 @@ export function TrayBar() {
       aria-controls="op-tray-body"
       onClick={() => setTrayOpen(!trayOpen)}
     >
-      <span className="op-dotbox" data-baton="tray" aria-hidden="true"><span className="op-dot" /></span>
+      <span className="op-dotbox" aria-hidden="true"><span className="op-dot" /></span>
       <span className="op-sum">
         {parts.map((p, i) => (
           <span key={i} className="op-sum-part">
@@ -82,7 +82,7 @@ export function TrayList() {
                       data-current={task.id === ui.openTaskId || undefined}
                       onClick={() => ui.openTask(task.id)}
                     >
-                      <span className="op-c1"><StatusDot status={task.status} batonKey={task.id} /></span>
+                      <span className="op-c1"><StatusDot status={task.status} /></span>
                       <span className="op-c2"><span className="op-title">{task.task}</span></span>
                       <span className="op-c3">{task.tool && <span className="op-tag">{task.tool}</span>}</span>
                       <span className={`op-c4${conflict ? ' op-flag' : ''}`}>{conflict ? 'Out of sync' : task.status}</span>

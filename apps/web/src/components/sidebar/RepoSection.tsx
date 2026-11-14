@@ -61,7 +61,7 @@ export function RepoSection({ mode }: { mode: SectionMode }) {
         {branches.map(({ b, t, p, ok }, idx) => {
           const body = (
             <>
-              {t ? <StatusDot status={t.status} batonKey={t.id} /> : <McpDot status="Offline" />}
+              {t ? <StatusDot status={t.status} /> : <McpDot status="Offline" />}
               <span className="op-person-name op-branch-name">{b.branch}</span>
               <span className="op-person-time">{b.pr || ago(b.updated, now.getTime())}</span>
               <span className="op-person-sub">

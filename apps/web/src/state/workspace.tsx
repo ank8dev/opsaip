@@ -12,6 +12,7 @@ import { byImportance, byStatus, isImportant, mapState, peopleById, type TrayLev
 import {
   clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
+import { askQuestion, type AskResult } from '../data/chat/ask';
 import { keepLastGood, startPoller, type DataSource, type LiveState } from '../data/poller';
 
 type SyncFlag = 'conflict' | 'suggested' | '';
@@ -25,6 +26,8 @@ interface WorkspaceValue {
   connect: (token: string) => string | undefined;
   /** Forget the token and go back to Demo. */
   disconnect: () => void;
+  /** Ask the server a question (Live only). The token stays in here. Never throws. */
+  ask: (question: string, signal: AbortSignal) => Promise<AskResult>;
   people: Record<string, Person>;
   /** Tasks from the workspace, with preview edits applied (Demo only). */
   tasks: Task[];
@@ -99,6 +102,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setLive(null);
     setConnection(null);
   }, []);
+
+  const ask = useCallback(
+    (question: string, signal: AbortSignal): Promise<AskResult> =>
+      connection === null
+        ? Promise.resolve({ ok: false, problem: 'unauthorized' })
+        : askQuestion(connection.token, question, signal),
+    [connection],
+  );
 
   const [taskPatches, setTaskPatches] = useState<Record<string, Partial<Task>>>({});
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
@@ -251,7 +262,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value: WorkspaceValue = {
-    ws, source, readOnly, connect, disconnect, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
+    ws, source, readOnly, connect, disconnect, ask, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
     linkNote: (id) => linkNotes[id] ?? '',
     messagesFor, decisionTasks, attentionTasks,
     changeTask, addLocalTask, addMessage, resolveConflict, linkSuggestion, dismissSuggestion,

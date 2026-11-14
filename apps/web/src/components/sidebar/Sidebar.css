@@ -36,6 +36,7 @@
 }
 .op-home .op-nav-item { color: var(--op-text-secondary); }
 .op-home .op-nav-item:hover { background: var(--op-hover); color: var(--op-text); }
+.op-home .op-nav-item[aria-current="page"] { color: var(--op-text); background: var(--op-hover); }
 .op-nav-item:focus-visible { outline: 2px solid var(--op-focus); outline-offset: -2px; }
 .op-nav-ico { width: 16px; height: 16px; color: var(--op-text-muted); }
 .op-nav-n { font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: var(--op-text-muted); }

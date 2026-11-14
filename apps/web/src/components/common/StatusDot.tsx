@@ -24,14 +24,12 @@ const SYNC_DOT: Record<SyncState, string> = {
 
 interface DotProps {
   className?: string;
-  /** Lets the conductor's baton find this dot: a task id, or "tray". */
-  batonKey?: string;
 }
 
 /** A task's state, shown by shape: spinning ring, hollow, filled, red. */
-export function StatusDot({ status, className, batonKey }: DotProps & { status: TaskStatus }) {
+export function StatusDot({ status, className }: DotProps & { status: TaskStatus }) {
   return (
-    <span className={`op-dotbox ${className ?? ''}`} data-baton={batonKey} aria-hidden="true">
+    <span className={`op-dotbox ${className ?? ''}`} aria-hidden="true">
       <span className={TASK_DOT[status] ?? 'op-dot-done'} />
     </span>
   );

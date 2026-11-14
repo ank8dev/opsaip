@@ -12,6 +12,17 @@ function task(id: string, status: TaskStatus, since?: string): Task {
 
 const ONLINE: ConnectionLabel[] = ['Demo', 'Connecting', 'Live'];
 
+describe('opsyFocus: hello is for the chat only', () => {
+  it('never returns hello, whatever the tasks and connection', () => {
+    const statuses: TaskStatus[] = ['Needs you', 'Failed', 'Working', 'Queued', 'Done'];
+    const connections: ConnectionLabel[] = ['Demo', 'Connecting', 'Live', 'Offline'];
+    for (const connection of connections) {
+      expect(opsyFocus([], connection, NOW).state).not.toBe('hello');
+      for (const s of statuses) expect(opsyFocus([task('a', s, iso(0))], connection, NOW).state).not.toBe('hello');
+    }
+  });
+});
+
 describe('opsyFocus: offline', () => {
   it('Offline wins over every task, with no task', () => {
     const tasks = [task('a', 'Needs you', iso(0)), task('b', 'Failed', iso(0)), task('c', 'Working', iso(0)), task('d', 'Done', iso(0))];

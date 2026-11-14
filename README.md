@@ -25,7 +25,7 @@ opsaip/
     web/          React web app (Vite + TypeScript) — the Opsaip interface
       src/
         styles/       design tokens (tokens.css) and base styles
-        components/   sidebar, home (composer, tray, task card), conductor, settings
+        components/   sidebar, home (composer, tray, task card), chat, settings
         state/        workspace data and interface state (React context)
         data/         pure helpers + the one place data is loaded from
         mocks/        sample data, same shape the server will return
@@ -303,9 +303,7 @@ says what went wrong.
 - Type: **Instrument Sans** for the interface, **DM Mono** for code, IDs and logs (bundled, no CDN).
 - Motion "Fluid": long, glassy, blurred on entry — 260 / 480 / 720 ms. Reduced motion is respected.
 - All of it lives in [`apps/web/src/styles/tokens.css`](apps/web/src/styles/tokens.css).
-- **The Conductor** — the single baton in the interface. It lives just right of the sidebar and
-  travels the dashboard to the task it is conducting: beating while an agent works, held still
-  while a task waits for you.
+- **Chat with Opsy** — the main screen is a chat. Opsy, the glass ball, answers with a brief, a task list or a proposed change, and its face matches the message.
 
 ## Data
 

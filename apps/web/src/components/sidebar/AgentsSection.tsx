@@ -53,7 +53,7 @@ export function AgentsSection({ mode }: { mode: SectionMode }) {
                     data-current={t.id === openTaskId || undefined}
                     onClick={() => openTask(t.id)}
                   >
-                    <StatusDot status={t.status} batonKey={t.id} />
+                    <StatusDot status={t.status} />
                     <span className="op-arow-title">{t.task}</span>
                     {isLocal(t) ? <Face label="Y" small /> : owner && <Face person={owner} small />}
                     <span className="op-arow-sub">

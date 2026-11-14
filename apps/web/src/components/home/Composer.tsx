@@ -4,25 +4,34 @@ import { isLocal } from '../../types';
 import { clockFor, firstName } from '../../data/selectors';
 import { LOCAL_PREFIX, useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
+import { ASK_MAX_QUESTION } from '../../data/chat/ask';
 import { Face } from '../common/Face';
 import { Picker, type PickerOption } from '../common/Picker';
 import { ModeMenu, type ComposeMode } from './ModeMenu';
 import { QuickActions } from './QuickActions';
 import { useTypingPlaceholder } from './useTypingPlaceholder';
 
-const VERB: Record<ComposeMode, string> = { task: 'Create', message: 'Send', agent: 'Run', announce: 'Announce' };
-const LABEL: Record<ComposeMode, string> = { task: 'Task', message: 'Message', agent: 'Agent task', announce: 'Announcement' };
-const TO: Record<ComposeMode, string> = { task: 'For', message: 'To', agent: 'Agent', announce: 'To' };
+const VERB: Record<ComposeMode, string> = { ask: 'Ask', task: 'Create', message: 'Send', agent: 'Run', announce: 'Announce' };
+const LABEL: Record<ComposeMode, string> = { ask: 'Question', task: 'Task', message: 'Message', agent: 'Agent task', announce: 'Announcement' };
+const TO: Record<ComposeMode, string> = { ask: 'Ask', task: 'For', message: 'To', agent: 'Agent', announce: 'To' };
 
 let localSeq = 0;
 
-/** Where you talk to Opsaip: create a task, message a teammate, start an agent, or announce. */
-export function Composer({ task }: { task: AnyTask | null }) {
+interface ComposerProps {
+  task: AnyTask | null;
+  /** Ask mode: send a question to the chat. */
+  onAsk: (question: string) => void;
+  /** An answer is still on its way: one question at a time. */
+  askBusy: boolean;
+}
+
+/** Where you talk to Opsaip: ask Opsy, create a task, message a teammate, start an agent, or announce. */
+export function Composer({ task, onAsk, askBusy }: ComposerProps) {
   const { ws, people, addLocalTask, changeTask, addMessage, readOnly } = useWorkspace();
   const ui = useUi();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const [mode, setMode] = useState<ComposeMode>('task');
+  const [mode, setMode] = useState<ComposeMode>('ask');
   const [personId, setPersonId] = useState(ws.team[0]?.id ?? '');
   const agents = ws.mcp.filter((c) => c.direction === 'in');
   const [agentId, setAgentId] = useState(agents[0]?.id ?? '');
@@ -30,6 +39,7 @@ export function Composer({ task }: { task: AnyTask | null }) {
 
   const slack = ws.channels.find((c) => c.channel === 'Slack');
   const slackOk = slack?.status === 'Connected';
+  const asking = mode === 'ask';
   const viaSlack = mode === 'message' || mode === 'announce';
   const canSend = !viaSlack || slackOk;
 
@@ -50,7 +60,8 @@ export function Composer({ task }: { task: AnyTask | null }) {
   const typed = useTypingPlaceholder(mode === 'agent', !!text, ui.motion.reduced);
   const person = people[personId];
   const placeholder =
-    mode === 'agent' ? typed
+    asking ? 'Ask about your tasks…'
+    : mode === 'agent' ? typed
     : mode === 'message' && person
       ? task ? `Write to ${firstName(person.name)} about this task…` : `Message ${firstName(person.name)}…`
     : mode === 'task' ? 'What needs doing?'
@@ -99,7 +110,10 @@ export function Composer({ task }: { task: AnyTask | null }) {
   function submit() {
     const value = text.trim();
     if (!value || !canSend) return;
-    if (mode === 'message') {
+    if (asking) {
+      if (askBusy) return;
+      onAsk(value);
+    } else if (mode === 'message') {
       const to = person?.name ?? 'teammate';
       if (task) {
         addMessage(task.id, { role: 'user', text: value, via: `to ${to} on Slack` });
@@ -140,8 +154,8 @@ export function Composer({ task }: { task: AnyTask | null }) {
     detail: [people[c.owner]?.name, c.status === 'Connected' ? '' : 'offline'].filter(Boolean).join(' · '),
   }));
 
-  // Server data is read-only for now: nothing here could reach the server.
-  if (readOnly) {
+  // Server data is read-only for now: only Ask can reach the server.
+  if (readOnly && !asking) {
     return (
       <div className="op-glowbox">
         <div className="op-ring">
@@ -149,6 +163,9 @@ export function Composer({ task }: { task: AnyTask | null }) {
             <p className="op-readonly-note">
               Read-only. Agents report tasks to your server through MCP; starting and answering tasks from here comes later.
             </p>
+            <div className="op-bar">
+              <ModeMenu mode={mode} onChange={(m) => { setMode(m); requestAnimationFrame(() => inputRef.current?.focus()); }} />
+            </div>
           </div>
         </div>
       </div>
@@ -174,6 +191,7 @@ export function Composer({ task }: { task: AnyTask | null }) {
                 display={(o) => [o.label, o.detail].filter(Boolean).join(' · ')}
               />
             )}
+            {asking && <span className="op-to-v">Opsy</span>}
             {mode === 'announce' && <span className="op-to-v">the whole team</span>}
             {viaSlack && (
               <>
@@ -189,6 +207,7 @@ export function Composer({ task }: { task: AnyTask | null }) {
             className="op-input"
             rows={1}
             placeholder={placeholder}
+            maxLength={asking ? ASK_MAX_QUESTION : undefined}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -205,7 +224,7 @@ export function Composer({ task }: { task: AnyTask | null }) {
             />
             {task && <QuickActions task={task} prefill={prefill} />}
             <span className="op-note" data-flash={ui.hint.flash} title={ui.hint.text} aria-live="polite">{ui.hint.text}</span>
-            <button type="button" className="op-btn" disabled={!text.trim() || !canSend} onClick={submit}>
+            <button type="button" className="op-btn" disabled={!text.trim() || !canSend || (asking && askBusy)} onClick={submit}>
               {VERB[mode]}
             </button>
           </div>
