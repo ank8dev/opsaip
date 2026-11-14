@@ -5,6 +5,8 @@ import { liveChipAnswer } from '../../data/chat/liveAnswers';
 import { actionCard, approvedPayload, beginApprove, cancelAction } from '../../data/chat/actions';
 import { decideProposal, demoAnswer } from '../../data/chat/demoAnswers';
 import type { ThreadMessage } from '../../data/chat/types';
+import { historyFor } from '../../data/chats/chats';
+import { useChats } from '../../state/chats';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import type { ActionWidget, Widget } from '../../data/chat/types';
@@ -19,12 +21,13 @@ const ASK_TIMEOUT_MS = 30_000;
  * Demo: Opsy answers at once from the sample tasks. Live: the question goes to
  * the server's Ask, and the answer replaces a "waiting" message.
  */
-export function useChat() {
+export function useChat(initialMessages: ThreadMessage[] = []) {
   const { allTasks, people, readOnly, source, ask, api, changeTask, findTask, setPendingPermissionTasks, attention } = useWorkspace();
   const ui = useUi();
-  const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const chats = useChats();
+  const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
   const [busy, setBusy] = useState(false);
-  const nextId = useRef(0);
+  const nextId = useRef(initialMessages.reduce((n, m) => Math.max(n, m.id + 1), 0));
   const controller = useRef<AbortController | null>(null);
   const requests = useRequests();
 
@@ -54,6 +57,37 @@ export function useChat() {
     },
     [ui, say, push, patch, requests.request, api],
   );
+
+  // Save the chat to the server (live only). The first message creates the chat; later changes are
+  // saved after a short pause, and a pause cut short by leaving the chat is saved at once.
+  const latest = useRef(messages);
+  latest.current = messages;
+  const saved = useRef<ThreadMessage[]>(initialMessages);
+  const myChat = useRef<string | null>(chats.session.chatId);
+  /** `create`: the first message may create the chat. Leaving the chat only saves one that exists, and never a deleted one. */
+  const saveNow = useCallback(async (create: boolean) => {
+    const list = latest.current;
+    if (!readOnly || list === saved.current || list.every((m) => m.from === 'opsy' && m.pending)) return;
+    let id = myChat.current;
+    if (id === null) {
+      if (!create) return;
+      const firstQuestion = list.find((m) => m.from === 'you');
+      saved.current = list;
+      id = (await chats.ensureChat(firstQuestion?.from === 'you' ? firstQuestion.text : '')) ?? null;
+      if (id === null) return;
+      myChat.current = id;
+    }
+    if (chats.wasDeleted(id)) return;
+    saved.current = list;
+    const result = await api.saveMessages(id, list, new AbortController().signal);
+    if (result.ok) chats.touch(result.value);
+  }, [readOnly, chats.ensureChat, chats.touch, chats.wasDeleted, api]);
+  useEffect(() => {
+    if (!readOnly || messages === saved.current) return;
+    const timer = window.setTimeout(() => void saveNow(true), 800);
+    return () => window.clearTimeout(timer);
+  }, [messages, readOnly, saveNow]);
+  useEffect(() => () => void saveNow(false), [saveNow]);
 
   // Tell the sidebar and the bar which runs wait for your Allow or Deny.
   useEffect(() => {
@@ -92,6 +126,7 @@ export function useChat() {
       const question = raw.trim();
       if (!question || busy) return;
       ui.closeTask(); // the thread is hidden while a task is open
+      const history = historyFor(messages); // the last few messages of THIS chat, before this question
       const you: ThreadMessage = { id: nextId.current++, from: 'you', text: question };
 
       if (!readOnly) {
@@ -124,7 +159,7 @@ export function useChat() {
       controller.current = c;
       let timedOut = false;
       const timer = window.setTimeout(() => { timedOut = true; c.abort(); }, ASK_TIMEOUT_MS);
-      void ask(question, c.signal, attachments).then((result) => {
+      void ask(question, c.signal, attachments, history).then((result) => {
         window.clearTimeout(timer);
         if (controller.current !== c) return; // left the page meanwhile
         controller.current = null;
@@ -137,7 +172,7 @@ export function useChat() {
         setBusy(false);
       });
     },
-    [busy, readOnly, allTasks, people, ask, ui, source.status, attention, proposeAction],
+    [busy, readOnly, allTasks, people, ask, ui, source.status, attention, proposeAction, messages],
   );
 
   /** Approve or Cancel a Proposed action card. Only Approve sends anything, and only the card's own title and prompt. */

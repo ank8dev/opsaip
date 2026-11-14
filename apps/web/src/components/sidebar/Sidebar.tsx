@@ -12,6 +12,7 @@ import { AgentsSection } from './AgentsSection';
 import { TeamSection } from './TeamSection';
 import { McpSection } from './McpSection';
 import { RepoSection } from './RepoSection';
+import { ChatList } from './ChatList';
 import './Sidebar.css';
 
 const SECTIONS: { key: Exclude<Section, 'chat'>; title: string; Icon: typeof AgentsIcon; View: typeof AgentsSection }[] = [
@@ -100,6 +101,7 @@ export function Sidebar() {
               <ChatIcon className="op-nav-ico" />
               <span>Chat</span>
             </button>
+            <ChatList />
             {SECTIONS.map(({ key, title, Icon }) => (
               <button
                 key={key}

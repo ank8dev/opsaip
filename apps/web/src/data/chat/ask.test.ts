@@ -208,3 +208,17 @@ describe('Ask with attachments', () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ question: 'Hi' });
   });
 });
+
+describe('Ask with chat history', () => {
+  it('sends the history of the current chat with the question', async () => {
+    const { impl, calls } = fakeFetch(json(200, { answer: 'ok' }));
+    const history = [{ role: 'you' as const, text: 'earlier' }, { role: 'opsy' as const, text: 'reply' }];
+    await askQuestion('tok', 'and now?', signal, impl, [], history);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ question: 'and now?', history });
+  });
+  it('sends no history field for a new chat', async () => {
+    const { impl, calls } = fakeFetch(json(200, { answer: 'ok' }));
+    await askQuestion('tok', 'hi', signal, impl);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ question: 'hi' });
+  });
+});

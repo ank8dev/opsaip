@@ -10,17 +10,19 @@ export interface CallOptions<T> {
   token: string;
   action: Action;
   path: string;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** A JSON body. Without it no body and no content-type are sent. */
   json?: unknown;
   signal: AbortSignal;
   fetchImpl?: typeof fetch;
   /** Reads a 2xx body as untrusted input. undefined means it is not what the contract says. */
   parse: (body: unknown) => T | undefined;
+  /** The success answer has no body (204): parse gets undefined and its result counts. */
+  empty?: boolean;
 }
 
 export async function callApi<T>({
-  token, action, path, method, json, signal, fetchImpl = globalThis.fetch, parse,
+  token, action, path, method, json, signal, fetchImpl = globalThis.fetch, parse, empty = false,
 }: CallOptions<T>): Promise<ApiResult<T>> {
   const headers: Record<string, string> = { authorization: `Bearer ${token}`, accept: 'application/json' };
   if (json !== undefined) headers['content-type'] = 'application/json';
@@ -52,6 +54,7 @@ export async function callApi<T>({
     return reason === undefined ? { ok: false, problem } : { ok: false, problem, reason };
   }
 
+  if (empty) return { ok: true, value: parse(undefined) as T };
   if (body === undefined) return { ok: false, problem: signal.aborted ? 'unreachable' : 'bad-response' };
   const value = parse(body);
   return value === undefined ? { ok: false, problem: 'bad-response' } : { ok: true, value };

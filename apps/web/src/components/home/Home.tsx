@@ -1,4 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { useChats } from '../../state/chats';
+import type { ThreadMessage } from '../../data/chat/types';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { rise } from '../../styles/motion';
@@ -15,16 +18,35 @@ import './Home.css';
  * Switching between Demo and a server starts a new chat: answers from one never sit next to the other.
  */
 export function Home() {
-  const { readOnly } = useWorkspace();
-  return <HomeColumn key={readOnly ? 'server' : 'demo'} />;
+  const { readOnly, api } = useWorkspace();
+  const { session } = useChats();
+  // Opening a saved chat loads its messages first; a new chat starts empty. The key makes the
+  // thread start over for another chat, and stays the same when a new chat is saved.
+  const [loaded, setLoaded] = useState<{ key: number; messages: ThreadMessage[] } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (loaded?.key === session.key) return;
+    if (session.chatId === null || !readOnly) { setLoaded({ key: session.key, messages: [] }); return; }
+    const c = new AbortController();
+    setFailed(false);
+    void api.loadMessages(session.chatId, c.signal).then((r) => {
+      if (c.signal.aborted) return;
+      if (r.ok) setLoaded({ key: session.key, messages: r.value });
+      else { setFailed(true); setLoaded({ key: session.key, messages: [] }); }
+    });
+    return () => c.abort();
+  }, [session.key, session.chatId, readOnly, api, loaded?.key]);
+
+  if (loaded?.key !== session.key) return <div className="op-col" aria-busy="true" />;
+  return <HomeColumn key={`${readOnly ? 'server' : 'demo'}-${session.key}`} initial={loaded.messages} loadFailed={failed} />;
 }
 
-function HomeColumn() {
+function HomeColumn({ initial, loadFailed }: { initial: ThreadMessage[]; loadFailed: boolean }) {
   const { findTask } = useWorkspace();
   const ui = useUi();
   const t = ui.motion;
   const task = findTask(ui.openTaskId);
-  const chat = useChat();
+  const chat = useChat(initial);
 
   return (
     <div
@@ -32,6 +54,7 @@ function HomeColumn() {
       data-tray={ui.trayOpen ? 'open' : 'closed'}
       hidden={ui.settingsOpen}
     >
+      {loadFailed && <p className="op-readonly-note" role="alert">I could not load this chat’s messages. You can start over here.</p>}
       <ChatThread chat={chat} />
       <Suggestions chat={chat} />
 
