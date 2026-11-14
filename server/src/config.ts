@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import { HOW_TO_CREATE_TOKEN, tokenProblem } from './auth/accessToken';
 import type { AskProvider } from './auth/askProvider';
+import { conductorFromEnv } from './auth/conductor/conductorConfig';
 import { askProviderFromEnv } from './auth/llm';
 
 export interface Config {
@@ -19,6 +20,12 @@ export interface Config {
    * closure: the key is not a field of the config and cannot be logged with it.
    */
   ask?: AskProvider;
+  /**
+   * Conductor mode (experimental): the real path of the git repository runs
+   * work in, from OPSAIP_CONDUCTOR_DIR. Absent when Conductor mode is off.
+   * Never log it: it is the user's own path.
+   */
+  conductorDir?: string;
 }
 
 export const DEFAULT_HOST = '127.0.0.1';
@@ -41,6 +48,11 @@ export class ConfigError extends Error {
  *
  * Ask (auth/llm.ts) is optional: provider and key both unset turns it off;
  * only one of them set is an error, so a half-done setup does not start.
+ *
+ * Conductor mode (auth/conductor/conductorConfig.ts) is optional too:
+ * OPSAIP_CONDUCTOR_DIR unset turns it off; set, it must pass every check
+ * there (an absolute path to the top folder of a git repository with a
+ * commit, and a loopback OPSAIP_HOST), or the server does not start.
  *
  * An empty or blank variable counts as unset. This matters for OPSAIP_HOST:
  * server.listen(port, '') would listen on ALL interfaces, not on localhost.
@@ -71,8 +83,12 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
   const ask = askProviderFromEnv(env);
   if (!ask.ok) throw new ConfigError(ask.problem);
 
+  const conductor = conductorFromEnv(env, host);
+  if (!conductor.ok) throw new ConfigError(conductor.problem);
+
   const config: Config = { host, port, dbPath, token, webDir };
   if (ask.provider !== undefined) config.ask = ask.provider;
+  if (conductor.dir !== undefined) config.conductorDir = conductor.dir;
   return config;
 }
 

@@ -154,6 +154,7 @@ npm run server                                 # http://127.0.0.1:4100
 | `OPSAIP_LLM_PROVIDER` | none (Ask off) | AI provider for `POST /v1/ask`: `gemini`. Set together with `OPSAIP_LLM_KEY`, see [Ask](#ask-optional). |
 | `OPSAIP_LLM_KEY` | none (Ask off) | The provider's API key. Never logged, never returned, never sent to the browser. |
 | `OPSAIP_LLM_MODEL` | `gemini-3.5-flash-lite` | Model id. Only with the two variables above. |
+| `OPSAIP_CONDUCTOR_DIR` | none (off) | Absolute path to a git repository on this machine: turns on [Conductor mode](#conductor-mode-experimental). A bad value stops the server at startup. |
 
 Endpoints (v0). Every request must send `Authorization: Bearer <token>`, except `GET /healthz`
 and the web app files (`/`, `/index.html`, `/favicon.svg`, `/assets/<file>`); a missing or wrong
@@ -166,6 +167,12 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
+| `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `reason` (only when off) says how to turn Conductor mode on.        |
+| `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "..." }`. Starts a [Conductor](#conductor-mode-experimental) run. 201 `{ "run" }`; 400 invalid input; 409 a run is already active; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
+| `GET /v1/runs/:id`  | 200 `{ "run" }`; 404 unknown run; 503 off                                                                                           |
+| `POST /v1/runs/:id/permission` | Body: `{ "allow": true, "permissionId": "..." }`. Answers the run's pending permission request. 200 `{ "run" }`; 400; 404; 409 no pending request with that id, or the run has ended; 413; 415; 503 |
+| `POST /v1/runs/:id/message` | Body: `{ "text": "..." }`. A follow-up while the run is active. 200 `{ "run" }`; 400; 404; 409 the run is not active; 413; 415; 503 |
+| `POST /v1/runs/:id/cancel` | No body. Stops the run. 200 `{ "run" }`; 404; 409 the run has already ended; 503                                       |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 | `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
 
@@ -270,6 +277,135 @@ Limits:
 The server logs one line per question with the status code, counts and duration, never the
 question, the answer or the key. The answer is plain text written by a model from data agents
 sent: a client must show it as text, never as HTML.
+
+## Conductor mode (experimental)
+
+Conductor mode lets Opsaip start a coding agent on your own Mac, on one of your git repositories,
+and bring its permission requests to you in Opsaip. The agent is **Claude Code**, the `claude`
+command you already use. It is off by default.
+
+> **It runs on your subscription, on your machine.** Opsaip starts your own, unmodified `claude`
+> command, which uses the login you already have on this Mac. Opsaip never asks for, reads, stores
+> or passes on Claude (or any other) credentials, and nothing goes through an Opsaip service: the
+> agent talks to Anthropic exactly as when you run `claude` in a terminal, and the usage counts
+> against your own plan.
+
+**Requirements**
+
+- The Opsaip server on the same Mac, listening on `127.0.0.1`, `::1` or `localhost` (the default).
+- [Claude Code](https://code.claude.com/docs) installed, `claude` on the `PATH` of the server, and
+  logged in: run `claude` once in a terminal and log in with your own subscription. Tested with
+  Claude Code **2.1.325**.
+- `git`, and a repository with at least one commit.
+
+**Turn it on** (then restart the server):
+
+```bash
+export OPSAIP_CONDUCTOR_DIR=/Users/me/code/my-app   # the top folder of a git repository
+npm run server        # prints "Conductor mode is on (experimental, agent claude-code)"
+```
+
+The server does not start, and says why, if the path is not absolute, does not exist, is not a
+folder, is a subfolder of a repository instead of its top folder (`git rev-parse --show-toplevel`),
+is not a repository, has no commit yet, or if `OPSAIP_HOST` is not a loopback address. Messages
+never print the path. Unset the variable to turn Conductor mode off.
+
+**What a run does**
+
+1. `POST /v1/runs` with a title and a prompt. One run at a time (409 while one is active).
+2. Opsaip makes a new branch and worktree from the repository's current `HEAD` (uncommitted
+   changes are not included): `git worktree add -b opsaip/run-<id> ~/.opsaip/worktrees/<id> HEAD`.
+   `~/.opsaip/worktrees` and the run's folder are created with mode `0700`.
+3. It creates a task (source "you", agent `claude-code`), and starts, in that worktree:
+
+   ```bash
+   claude -p --input-format stream-json --output-format stream-json --verbose \
+     --permission-mode acceptEdits \
+     --mcp-config /tmp/opsaip-XXXXXX/mcp.json --strict-mcp-config \
+     --permission-prompt-tool mcp__opsaip__approve
+   ```
+
+   The prompt goes to the agent's input, never on the command line. Without a shell, and without
+   the server's `OPSAIP_*` variables (your access token and Ask key stay with the server).
+4. The task follows the run: `running` → `waiting_on_human` (the note says what the agent asks to
+   do) while you decide → `running` → `done`. It ends `failed` on an error, a crash (the note gives
+   the exit code), when you stop it ("Stopped by you"), or when a permission request gets no answer
+   within 30 minutes (Opsaip denies it and stops the run).
+5. When Claude Code finishes its answer, the run is over: Opsaip closes its input. A follow-up
+   (`POST /v1/runs/:id/message`) is accepted only while the run is still working. If Claude Code
+   has not exited 10 seconds later (for example it waits for background work it started), Opsaip
+   stops it: SIGTERM, then SIGKILL to its whole process group 5 seconds after.
+
+`GET /v1/runs/:id` returns `{ "run": { "id", "taskId", "status", "branch", "worktree", "permission"?,
+"lastMessage"? } }`: `permission` is `{ "id", "tool", "summary" }` while a request waits (answer
+it with that `id`); `lastMessage` is the agent's latest text, then its final answer, cut at 2000
+characters. `summary` (300 characters at most) and `lastMessage` come from the agent: show them as
+text, never as HTML. A prompt or follow-up is at most 12 000 characters, and the whole request at
+most 16 KB (text with many non-ASCII characters reaches 16 KB first). Finished runs are kept in
+memory for `GET` (the last 20) and forgotten when the server restarts; their tasks stay.
+
+**What the agent may do without asking you**
+
+Opsaip uses Claude Code's `acceptEdits` permission mode. In Claude Code's words
+([permission modes](https://code.claude.com/docs/en/permission-modes#auto-approve-file-edits-with-acceptedits-mode)):
+Claude creates and edits files in its working directory (the run's worktree) without asking, and
+also runs these filesystem commands there without asking: `mkdir`, `touch`, `rm`, `rmdir`, `mv`,
+`cp` and `sed`. Reading files in the worktree, and Claude Code's built-in
+[read-only commands](https://code.claude.com/docs/en/permissions#read-only-commands) (`ls`, `cat`,
+`grep`, `find`, read-only `git`, …), never ask, and the read-only commands may also read files
+outside the worktree unless you turn on `permissions.blockReadsOutsideWorkingDirectories` in your
+Claude Code settings. WebFetch on Claude Code's built-in list of documentation sites does not ask
+either.
+
+Everything else comes to Opsaip as a permission request that waits for you: any other shell
+command (`npm install`, `npm test`, `git commit`, `curl`, …), web access, edits outside the
+worktree or to [protected paths](https://code.claude.com/docs/en/permission-modes#protected-paths),
+and MCP tools. Opsaip never uses `--dangerously-skip-permissions` or `bypassPermissions`.
+
+Your own Claude Code settings still apply: allow rules in `~/.claude/settings.json` or in the
+repository's `.claude/settings.json` approve what they match without asking, deny rules still deny,
+and your hooks run. Your MCP servers do not load in a run (`--strict-mcp-config`): only Opsaip's
+permission server does, so the Opsaip reporting server from [docs/CONNECT.md](docs/CONNECT.md)
+does not report the run a second time.
+
+**How the permission requests reach Opsaip**
+
+Claude Code calls an MCP tool for each request (`--permission-prompt-tool`). That tool is
+`server/src/auth/conductor/permissionMcp.mjs`, a small MCP server that Claude Code starts and that
+asks the Opsaip server over a Unix socket in a private `/tmp/opsaip-XXXXXX` folder (mode `0700`,
+with a random secret per run, deleted when the run ends). It can only ask: the answer always
+comes from you, through the API. If anything goes wrong on that path, the answer is "deny".
+
+**Worktrees are kept: review and clean up**
+
+Opsaip never deletes a run's worktree or branch: the agent's changes are there for you to review.
+
+```bash
+cd /Users/me/code/my-app
+git worktree list                                   # every run: ~/.opsaip/worktrees/<id>
+git -C ~/.opsaip/worktrees/<id> status              # what the agent changed
+git diff HEAD...opsaip/run-<id>                     # its commits, if it made any
+git worktree remove ~/.opsaip/worktrees/<id>        # add --force to drop uncommitted changes
+git branch -D opsaip/run-<id>                       # delete the branch too
+git worktree prune                                  # forget worktrees whose folder you deleted
+```
+
+**Known limits**
+
+- Experimental. One agent (Claude Code), one repository, one run at a time.
+- The permission request flag `--permission-prompt-tool` is documented in the
+  [CLI reference](https://code.claude.com/docs/en/cli-reference) but not listed by `claude --help`.
+  It was checked with Claude Code 2.1.325 and its docs; a newer Claude Code may change it.
+- Opsaip's tests use a fake agent that speaks the same protocol; no test runs a real Claude session.
+- A run ends with Claude Code's first final answer: no multi-turn chat yet. To continue, start a
+  new run, or open the worktree and run `claude --continue` yourself.
+- An unanswered permission request is denied after 30 minutes and the run fails.
+- If the server stops during a run, the run is stopped and its task marked failed. Runs are not
+  resumed after a restart.
+- When Claude Code asks a clarifying question (its `AskUserQuestion` tool), it reaches Opsaip as a
+  permission request for that tool, with the question as the summary. Opsaip cannot pass your
+  choice back yet: deny it, and answer with a follow-up message while the run is active. This
+  case was checked against the docs only, not with a real session.
 
 ## Run the MCP server
 
