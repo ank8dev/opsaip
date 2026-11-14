@@ -87,3 +87,6 @@
 .op-conn-fields { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .op-conn-fields .op-field { flex: 1 1 240px; width: auto; }
 .op-conn-problem { flex-basis: 100%; margin: 0; font-size: 12px; line-height: 16px; color: var(--op-error); }
+
+.op-about-v { font-family: var(--op-mono); font-size: 12px; line-height: 20px; color: var(--op-text-secondary); text-align: right; overflow-wrap: anywhere; }
+.op-about-v a { color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; font-family: var(--op-sans); }

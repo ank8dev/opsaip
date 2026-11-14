@@ -2,12 +2,14 @@
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { readServerVersion } from './about';
 import { createApp } from './app';
 import { createRunManager, type RunManager } from './auth/conductor/runManager';
 import { ConfigError, loadConfig, type Config } from './config';
 import { createChatStore } from './chatStore';
 import { openDatabase } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
+import { createUpdateCheck, updateCheckEnabled } from './updateCheck';
 
 let config: Config;
 try {
@@ -35,7 +37,11 @@ const store = createSqliteTaskStore(db);
 // Conductor mode: the repository path is never logged (it is the user's own).
 const conductor: RunManager | undefined =
   config.conductorDir === undefined ? undefined : createRunManager({ store, repoDir: config.conductorDir });
-const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor, chats: createChatStore(db) });
+const updateCheck = createUpdateCheck({
+  current: readServerVersion(),
+  enabled: updateCheckEnabled(process.env),
+});
+const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor, chats: createChatStore(db), updateCheck });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
@@ -62,6 +68,12 @@ server.listen(port, host, () => {
   } else {
     console.log('opsaip: Conductor mode is on (experimental, agent claude-code)');
   }
+  if (updateCheck.status().enabled) {
+    console.log('opsaip: update check is on (once a day; set OPSAIP_UPDATE_CHECK=off to turn it off)');
+  } else {
+    console.log('opsaip: update check is off (OPSAIP_UPDATE_CHECK)');
+  }
+  updateCheck.start();
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

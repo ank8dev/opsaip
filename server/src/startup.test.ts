@@ -117,4 +117,11 @@ describe('startup', { timeout: 30_000 }, () => {
     expect(await stopServer(server)).toBe(0);
     expect(server.output()).toContain('Ask is off');
   });
+
+  it('says whether the update check is on or off (the test helper turns it off by default)', async () => {
+    const off = spawn({ OPSAIP_PORT: String(await freePort()), OPSAIP_TOKEN: TOKEN });
+    await waitUntilListening(off);
+    expect(await stopServer(off)).toBe(0);
+    expect(off.output()).toContain('update check is off');
+  });
 });

@@ -7,6 +7,7 @@ import type { Task } from '../../types';
 import { answerPermission, cancelRun, fetchConductorStatus, fetchRun, sendFollowUp, startRun, startRunExact, type ConductorStatus, type Run } from './conductor';
 import type { ApiResult } from './serverCall';
 import { createTask } from './tasks';
+import { fetchAbout, fetchUpdate, type About, type UpdateInfo } from '../about';
 import { fetchCapabilities, type AttachPurpose, type Capabilities } from '../attachments/capabilities';
 import { deleteUpload, uploadFile, type UploadResult } from '../attachments/upload';
 import { fetchTranscript, type Transcript } from './transcript';
@@ -22,6 +23,8 @@ export interface ServerApi {
   transcript: (id: string, signal: AbortSignal) => Promise<ApiResult<Transcript>>;
   answerPermission: (id: string, permissionId: string, allow: boolean, signal: AbortSignal) => Promise<ApiResult<Run>>;
   followUp: (id: string, text: string, signal: AbortSignal, attachments?: readonly string[]) => Promise<ApiResult<Run>>;
+  about: (signal: AbortSignal) => Promise<ApiResult<About>>;
+  update: (signal: AbortSignal) => Promise<ApiResult<UpdateInfo>>;
   /** What can be attached in Ask and in Agent mode. */
   capabilities: (signal: AbortSignal) => Promise<ApiResult<Capabilities>>;
   upload: (purpose: AttachPurpose, file: Blob & { name: string }, signal: AbortSignal) => Promise<UploadResult>;
@@ -33,7 +36,7 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
   if (token === null) {
     const none = <T>(): Promise<ApiResult<T>> => Promise.resolve({ ok: false, problem: 'unauthorized' });
     return {
-      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none,
+      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none, about: none, update: none,
       upload: () => Promise.resolve({ ok: false, problem: 'unauthorized' }), deleteUpload: () => Promise.resolve(),
     };
   }
@@ -46,6 +49,8 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
     transcript: (id, signal) => fetchTranscript(token, id, signal, fetchImpl),
     answerPermission: (id, permissionId, allow, signal) => answerPermission(token, id, permissionId, allow, signal, fetchImpl),
     followUp: (id, text, signal, attachments) => sendFollowUp(token, id, text, signal, fetchImpl, attachments),
+    about: (signal) => fetchAbout(token, signal, fetchImpl),
+    update: (signal) => fetchUpdate(token, signal, fetchImpl),
     capabilities: (signal) => fetchCapabilities(token, signal, fetchImpl),
     upload: (purpose, file, signal) => uploadFile(token, purpose, file, signal, fetchImpl),
     deleteUpload: (id) => deleteUpload(token, id, fetchImpl),
