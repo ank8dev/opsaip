@@ -447,7 +447,15 @@ says what went wrong.
 
 - **Demo** — no server connection saved: the sample team in `apps/web/src/mocks/`.
 - **Server** — an access token saved in this browser tab: the app polls `GET /v1/tasks` every 5 s
-  and shows only those tasks, read-only. Team, MCP and Repo are empty until the server has them.
+  and shows only those tasks. Team, MCP and Repo are empty until the server has them. In the chat's
+  composer, **Ask** asks Opsy about them, **Task** creates one (`POST /v1/tasks`, shown as yours:
+  `source: "you"`), and **Agent** starts a Claude Code run when
+  [Conductor mode](#conductor-mode-experimental) is on (`GET /v1/conductor` says whether it is):
+  the run card follows it (`GET /v1/runs/:id` every 2 s while it is active and the page is
+  visible), permission requests show as a **Needs you** card with Allow and Deny, and while a run
+  is active the Agent box sends follow-ups and the card has a Stop button. The id of the run being
+  followed is kept in `sessionStorage` (`opsaip.activeRun`), so a reload brings its card back.
+  Message and Announce stay read-only. Text from the agent is always shown as plain text.
 
 The app always calls relative paths (`/v1/...`), never a host. `npm run dev` and `npm run preview`
 forward `/v1` to the server at `OPSAIP_URL` (default `http://127.0.0.1:4100`). The token is kept in

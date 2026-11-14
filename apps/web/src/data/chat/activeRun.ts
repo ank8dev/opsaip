@@ -26,7 +26,7 @@ export function loadActiveRun(storage: KeyValueStore | undefined = sessionStore(
   try {
     const raw = storage?.getItem(ACTIVE_RUN_KEY) ?? null;
     if (raw === null || raw.trim() === '') return null;
-    if (!raw.startsWith('{')) return { id: raw.trim(), title: '' }; // just an id
+    if (!raw.startsWith('{')) return /^[\w.-]{1,100}$/.test(raw.trim()) ? { id: raw.trim(), title: '' } : null; // just an id
     const value: unknown = JSON.parse(raw);
     if (typeof value !== 'object' || value === null) return null;
     const { id, title } = value as { id?: unknown; title?: unknown };
