@@ -9,7 +9,6 @@ export interface MotionTokens {
   fast: number;    // seconds
   base: number;
   slow: number;
-  baton: number;
   stagger: number;
   enterStep: number;
   dist: number;    // px
@@ -18,7 +17,6 @@ export interface MotionTokens {
   easeOut: Bezier;
   easeExit: Bezier;
   easeSpring: Bezier;
-  easeBaton: Bezier;
   reduced: boolean;
 }
 
@@ -45,7 +43,6 @@ export function readMotionTokens(): MotionTokens {
     fast: seconds(get('--op-dur-fast')),
     base: seconds(get('--op-dur-base')),
     slow,
-    baton: seconds(get('--op-dur-baton')),
     stagger: seconds(get('--op-stagger')),
     enterStep: seconds(get('--op-enter-step')),
     dist: parseFloat(get('--op-dist')) || 0,
@@ -54,7 +51,6 @@ export function readMotionTokens(): MotionTokens {
     easeOut: bezier(get('--op-ease-out')),
     easeExit: bezier(get('--op-ease-exit')),
     easeSpring: bezier(get('--op-ease-spring')),
-    easeBaton: bezier(get('--op-ease-baton')),
     reduced: slow < 0.01,
   };
 }

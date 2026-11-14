@@ -48,7 +48,7 @@ export function TaskCard({ task }: { task: AnyTask }) {
           <span className="op-title">{task.task}</span>
           <span className="op-c3">{task.source && <span className="op-tag">{task.source}</span>}</span>
           <span className="op-c4" style={task.status === 'Failed' ? { color: 'var(--op-error)' } : undefined}>
-            <StatusDot status={task.status} batonKey={task.id} className="op-card-dot" />
+            <StatusDot status={task.status} className="op-card-dot" />
             {task.status}
           </span>
         </div>

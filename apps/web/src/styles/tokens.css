@@ -19,7 +19,7 @@
   --op-accent-hover: #D4F55A;
   --op-accent-pressed: #B5E01F;
   --op-on-accent: #0B0B0B;
-  --op-signal: #C8F03C;          /* "live": working agents, presence, the baton's light */
+  --op-signal: #C8F03C;          /* "live": working agents, presence */
   --op-focus: #C8F03C;
   --op-logo-dot: #C8F03C;
   --op-error: #FF5A4E;           /* the only colour besides lime: errors */
@@ -49,11 +49,9 @@
   --op-ease-exit: cubic-bezier(0.32, 0, 0.67, 0);     /* things leaving */
   --op-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);   /* place or size changes; settles, never overshoots */
   --op-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);   /* theme and colour changes */
-  --op-ease-baton: cubic-bezier(0.32, 0.72, 0, 1);    /* the conductor's travel */
   --op-dur-fast: 260ms;   /* hovers, presses, small colour changes */
   --op-dur-base: 480ms;   /* menus, status changes, every exit */
   --op-dur-slow: 720ms;   /* windows, panels, trays opening */
-  --op-dur-baton: 720ms;  /* the baton travelling */
   --op-dist: 24px;        /* how far things travel when they appear */
   --op-scale-from: 0.96;
   --op-blur: 8px;         /* blur things start from */
@@ -99,11 +97,11 @@
 /* Reduced motion: from the OS, or from Settings → Appearance → Motion */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms; --op-dur-baton: 1ms;
+    --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms;
     --op-stagger: 0ms; --op-enter-step: 0ms; --op-blur: 0px;
   }
 }
 :root[data-motion="reduce"] {
-  --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms; --op-dur-baton: 1ms;
+  --op-dur-fast: 1ms; --op-dur-base: 1ms; --op-dur-slow: 1ms;
   --op-stagger: 0ms; --op-enter-step: 0ms; --op-blur: 0px;
 }
