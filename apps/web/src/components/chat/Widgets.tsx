@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { TaskStatus } from '../../types';
 import { ago } from '../../data/selectors';
 import type {
-  AgentWidget, BriefWidget, NeedsWidget, PermissionWidget, ProposalWidget, RunWidget, TaskLine, TaskListWidget, TextWidget, Widget,
+  ActionWidget, AgentWidget, BriefWidget, NeedsWidget, PermissionWidget, ProposalWidget, RunWidget, TaskLine, TaskListWidget, TextWidget, Widget,
 } from '../../data/chat/types';
 import { isRunActive } from '../../data/chat/conductor';
 import { PERMISSION_OUTCOME_TEXT, RUN_STATUS_TEXT } from '../../data/chat/runWidget';
@@ -39,6 +39,7 @@ export function WidgetView({ widget, onDecide, onAnswer, onStop }: ViewProps) {
       {widget.kind === 'agent' && <AgentCard widget={widget} />}
       {widget.kind === 'proposal' && <Proposal widget={widget} onDecide={onDecide} />}
       {widget.kind === 'text' && <Text widget={widget} />}
+      {widget.kind === 'action' && <ActionCard widget={widget} onDecide={onDecide} />}
       {widget.kind === 'run' && <RunCard widget={widget} onStop={onStop} />}
       {widget.kind === 'permission' && <PermissionCard widget={widget} onAnswer={onAnswer} />}
       {widget.source && <p className="op-w-source">{widget.source}</p>}
@@ -216,6 +217,82 @@ function Text({ widget }: Props<TextWidget>) {
           <a href={widget.link.href} target="_blank" rel="noopener noreferrer">{widget.link.label}</a>
         </p>
       )}
+    </>
+  );
+}
+
+const ACTION_OUTCOME: Record<'approved' | 'cancelled' | 'failed', string> = {
+  approved: 'Approved and sent. It is running now; its card follows below.',
+  cancelled: 'Cancelled. Nothing was sent.',
+  failed: 'It did not go through. The message below says why. Nothing is running.',
+};
+const TASK_OUTCOME: Record<'approved' | 'cancelled' | 'failed', string> = {
+  approved: 'Approved. The task was created.',
+  cancelled: 'Cancelled. Nothing was created.',
+  failed: 'It did not go through. The message below says why. Nothing was created.',
+};
+
+/**
+ * Opsy proposes to start Claude Code on a prompt, or to create a task. It shows
+ * the agent, the repo and the exact prompt (or the task title); nothing is sent
+ * until Approve. When Agent mode is off or a run is active there is no Approve,
+ * only the reason. Everything is text.
+ */
+function ActionCard({ widget, onDecide }: Props<ActionWidget> & { onDecide: (d: 'approve' | 'cancel') => void }) {
+  const outcome = useRef<HTMLParagraphElement>(null);
+  const was = useRef(widget.state);
+  // The buttons go away once you decide: keep focus in the card, on the outcome.
+  useEffect(() => {
+    if (was.current === 'pending' && widget.state !== 'pending') outcome.current?.focus({ preventScroll: true });
+    was.current = widget.state;
+  }, [widget.state]);
+
+  const run = widget.action === 'run';
+  const done = widget.state === 'approved' || widget.state === 'cancelled' || widget.state === 'failed';
+  return (
+    <>
+      <p className="op-w-text">{widget.answer}</p>
+      <div className="op-w-prop op-w-action" data-status={widget.state}>
+        <p className="op-w-label">Proposed action</p>
+        <dl className="op-w-diff op-w-act-facts">
+          <div><dt>{run ? 'Agent' : 'Action'}</dt><dd>{run ? widget.agent : 'Create a task'}</dd></div>
+          {run && widget.repo !== '' && <div><dt>Repo</dt><dd>{widget.repo}</dd></div>}
+          <div><dt>{run ? 'Title' : 'Task'}</dt><dd className="op-w-after">{widget.title}</dd></div>
+        </dl>
+        {run && (
+          <>
+            <p className="op-w-label">Prompt that will be sent</p>
+            <pre className="op-w-code">{widget.prompt}</pre>
+          </>
+        )}
+        {widget.state === 'pending' && (
+          <>
+            <p className="op-w-more">Nothing is sent until you approve.</p>
+            <div className="op-w-acts">
+              <button type="button" className="op-sbtn op-sbtn-primary" onClick={() => onDecide('approve')}>Approve</button>
+              <button type="button" className="op-sbtn" onClick={() => onDecide('cancel')}>Cancel</button>
+            </div>
+          </>
+        )}
+        {widget.state === 'approving' && (
+          <p className="op-w-outcome" role="status">Sending…</p>
+        )}
+        {widget.state === 'blocked' && (
+          <>
+            <p className="op-w-outcome" role="status">I can’t start this now. {widget.note}</p>
+            {widget.link && (
+              <p className="op-w-outcome">
+                <a href={widget.link.href} target="_blank" rel="noopener noreferrer">{widget.link.label}</a>
+              </p>
+            )}
+          </>
+        )}
+        {done && (
+          <p ref={outcome} tabIndex={-1} role="status" className="op-w-outcome">
+            {(run ? ACTION_OUTCOME : TASK_OUTCOME)[widget.state as 'approved' | 'cancelled' | 'failed']}
+          </p>
+        )}
+      </div>
     </>
   );
 }

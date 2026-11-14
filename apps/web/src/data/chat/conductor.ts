@@ -49,7 +49,14 @@ export function promptProblem(text: string): string | undefined {
 
 // ---- What the server sends ----
 
-export type ConductorStatus = { enabled: true } | { enabled: false; reason?: string };
+/**
+ * GET /v1/conductor. When on: `repo` is the folder name of the repository runs work in
+ * (never a path) and `active` says whether a run is active now. Older servers send neither.
+ */
+export type ConductorStatus = { enabled: true; repo?: string; active?: boolean } | { enabled: false; reason?: string };
+
+/** The longest repo name kept for display. */
+const MAX_REPO_CHARS = 200;
 
 export interface RunPermission {
   id: string;
@@ -79,7 +86,12 @@ export function isRunActive(status: AgentTaskStatus): boolean {
 
 export function parseConductorStatus(body: unknown): ConductorStatus | undefined {
   if (!isRecord(body) || typeof body.enabled !== 'boolean') return undefined;
-  if (body.enabled) return { enabled: true };
+  if (body.enabled) {
+    const status: { enabled: true; repo?: string; active?: boolean } = { enabled: true };
+    if (typeof body.repo === 'string' && body.repo.trim() !== '') status.repo = body.repo.trim().slice(0, MAX_REPO_CHARS);
+    if (typeof body.active === 'boolean') status.active = body.active;
+    return status;
+  }
   const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
   return reason === '' ? { enabled: false } : { enabled: false, reason: reason.slice(0, MAX_REASON_CHARS) };
 }
@@ -117,11 +129,25 @@ export function fetchConductorStatus(token: string, signal: AbortSignal, fetchIm
 }
 
 /** POST /v1/runs: the title is the first line of `text`, the prompt is all of it. */
-export async function startRun(token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch): Promise<ApiResult<Run>> {
-  const problem = promptProblem(text);
+export function startRun(token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch): Promise<ApiResult<Run>> {
+  return startRunExact(token, { title: runTitleFrom(text), prompt: text }, signal, fetchImpl);
+}
+
+/**
+ * POST /v1/runs with exactly this title and prompt, unchanged: what a Proposed
+ * action card shows is what is sent. A title or prompt the server would refuse
+ * is a 'bad-request' without a request.
+ */
+export async function startRunExact(
+  token: string, run: { title: string; prompt: string }, signal: AbortSignal, fetchImpl?: typeof fetch,
+): Promise<ApiResult<Run>> {
+  const problem = promptProblem(run.prompt);
   if (problem !== undefined) return { ok: false, problem: 'bad-request', reason: problem };
+  if (run.title.trim() === '' || run.title.length > RUN_TITLE_MAX) {
+    return { ok: false, problem: 'bad-request', reason: `a title is 1 to ${RUN_TITLE_MAX} characters.` };
+  }
   return callApi({
-    token, action: 'startRun', path: RUNS_PATH, method: 'POST', json: { title: runTitleFrom(text), prompt: text },
+    token, action: 'startRun', path: RUNS_PATH, method: 'POST', json: { title: run.title, prompt: run.prompt },
     signal, fetchImpl, parse: parseRunResponse,
   });
 }

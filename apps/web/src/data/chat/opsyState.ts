@@ -17,7 +17,7 @@ const RUN_STATE: Record<AgentTaskStatus, OpsyState> = {
  * - the server is offline (Live) -> offline, whatever the message;
  * - waiting for the server -> working;
  * - a brief -> hello;
- * - waiting for your OK: Needs you tasks, a proposal before you decide, a run waiting
+ * - waiting for your OK: Needs you tasks, a proposal or a proposed action before you decide, a run waiting
  *   for you, or a permission request you have not answered -> question;
  * - a run: starting or working -> working, done -> done, failed -> error;
  * - everything else (answers, lists, decided proposals, errors) -> idle.
@@ -29,6 +29,7 @@ export function opsyStateFor(message: Extract<ThreadMessage, { from: 'opsy' }>, 
     case 'brief': return 'hello';
     case 'needs': return 'question';
     case 'proposal': return message.widget.status === 'pending' ? 'question' : 'idle';
+    case 'action': return message.widget.state === 'pending' || message.widget.state === 'blocked' ? 'question' : message.widget.state === 'approving' ? 'working' : 'idle';
     case 'permission': return message.widget.state === 'pending' ? 'question' : 'idle';
     case 'run': return RUN_STATE[message.widget.status];
     default: return 'idle';

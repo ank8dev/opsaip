@@ -114,8 +114,38 @@ export interface PermissionWidget extends WidgetBase {
   error: string;
 }
 
+/**
+ * pending: waiting for Approve or Cancel. approving: Approve was clicked, the server has not answered.
+ * approved: it was sent. cancelled: nothing was sent. failed: Approve did not go through (the message below says why).
+ * blocked: it cannot be approved now (Agent mode is off, or a run is active); `note` says why.
+ */
+export type ActionState = 'pending' | 'approving' | 'approved' | 'cancelled' | 'failed' | 'blocked';
+
+/**
+ * Something Opsy proposes to do for you in Ask mode: start Claude Code on a
+ * prompt, or create a task. Nothing is sent before Approve. `title` and
+ * `prompt` are exactly what Approve sends.
+ */
+export interface ActionWidget extends WidgetBase {
+  kind: 'action';
+  /** Opsy's one sentence about it. Text. */
+  answer: string;
+  action: 'run' | 'task';
+  /** Who runs it ("Claude Code"); '' for a task. */
+  agent: string;
+  /** The repository folder name; '' when unknown or for a task. */
+  repo: string;
+  title: string;
+  /** The exact prompt that will be sent; '' for a task. */
+  prompt: string;
+  state: ActionState;
+  /** Why it is blocked or failed; ''. Text. */
+  note: string;
+  link?: { label: string; href: string };
+}
+
 export type Widget =
-  | BriefWidget | TaskListWidget | NeedsWidget | AgentWidget | ProposalWidget | TextWidget | RunWidget | PermissionWidget;
+  | ActionWidget | BriefWidget | TaskListWidget | NeedsWidget | AgentWidget | ProposalWidget | TextWidget | RunWidget | PermissionWidget;
 
 /** A message in the thread. `pending` is the placeholder while the server thinks. */
 export type ThreadMessage =

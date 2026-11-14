@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ASK_DOCS_URL, ASK_PATH, ASK_SOURCE, askProblemReply, askQuestion, askReply, parseRetryAfter, type AskProblem,
+  ASK_DOCS_URL, ASK_PATH, ASK_SOURCE, askProblemReply, askQuestion, askReply, parseAskAction, parseRetryAfter, type AskProblem,
 } from './ask';
 
 const signal = new AbortController().signal;
@@ -23,7 +23,7 @@ describe('askQuestion: the request', () => {
   it('POSTs { question } to /v1/ask with the token, JSON, and no redirects', async () => {
     const { impl, calls } = fakeFetch(json(200, { answer: 'Two.' }));
     const r = await askQuestion('tok-123', 'How many?', signal, impl);
-    expect(r).toEqual({ ok: true, answer: 'Two.' });
+    expect(r).toEqual({ ok: true, answer: 'Two.', action: null });
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(ASK_PATH);
     expect(ASK_PATH).toBe('/v1/ask');
@@ -111,11 +111,11 @@ describe('the answer stays plain text', () => {
   it('is returned byte for byte: no parsing, no stripping, no Markdown', async () => {
     const { impl } = fakeFetch(json(200, { answer: nasty }));
     const r = await askQuestion('t', 'q', signal, impl);
-    expect(r).toEqual({ ok: true, answer: nasty });
+    expect(r).toEqual({ ok: true, answer: nasty, action: null });
   });
 
   it('becomes a text widget with the Ask source line and no link', () => {
-    const w = askReply({ ok: true, answer: nasty });
+    const w = askReply({ ok: true, answer: nasty, action: null });
     expect(w).toEqual({ kind: 'text', text: nasty, source: ASK_SOURCE });
     expect(w.source).toBe('From your server’s tasks, via Ask');
     expect(w.link).toBeUndefined();
@@ -164,5 +164,33 @@ describe('what Opsy says for each problem', () => {
   it('askReply maps a failed result to its problem reply', () => {
     expect(askReply({ ok: false, problem: 'timeout' })).toEqual(askProblemReply('timeout'));
     expect(askReply({ ok: false, problem: 'rate-limited', retryAfter: 9 })).toEqual(askProblemReply('rate-limited', 9));
+  });
+});
+
+describe('the action in an answer', () => {
+  const run = { type: 'run', agent: 'claude-code', title: 'Fix it', prompt: 'Fix the bug.' };
+
+  it('comes with the answer', async () => {
+    const { impl } = fakeFetch(json(200, { answer: 'Proposing a run.', action: { ...run, extra: 'dropped' } }));
+    expect(await askQuestion('t', 'run it', signal, impl)).toEqual({ ok: true, answer: 'Proposing a run.', action: run });
+  });
+
+  it('is null when missing or null', async () => {
+    expect(await askQuestion('t', 'q', signal, fakeFetch(json(200, { answer: 'a', action: null })).impl)).toMatchObject({ action: null });
+    expect(await askQuestion('t', 'q', signal, fakeFetch(json(200, { answer: 'a' })).impl)).toMatchObject({ action: null });
+  });
+
+  it('parses a task', () => {
+    expect(parseAskAction({ type: 'task', title: 'Write docs', prompt: 'ignored' })).toEqual({ type: 'task', title: 'Write docs' });
+  });
+
+  it('refuses what the server would refuse, and what is not for Claude Code', () => {
+    for (const bad of [
+      'run', 7, [], { type: 'run' }, { ...run, agent: 'codex' }, { ...run, agent: undefined }, { ...run, title: ' ' },
+      { ...run, title: 'x'.repeat(201) }, { ...run, prompt: '' }, { ...run, prompt: 'x'.repeat(12_001) }, { ...run, prompt: 5 },
+      { type: 'task', title: 'x'.repeat(201) }, { type: 'task' }, { type: 'delete', title: 'x' },
+    ]) {
+      expect(parseAskAction(bad)).toBeNull();
+    }
   });
 });
