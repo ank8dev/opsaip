@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentTaskStatus } from '@opsaip/core';
 import { clearActiveRun, loadActiveRun, saveActiveRun } from '../../data/chat/activeRun';
+import { loadRunTasks, rememberRunTask, saveRunTasks } from '../../data/chat/runTasks';
 import { conductorStateFrom, isRunActive, runTitleFrom, type ConductorState, type Run } from '../../data/chat/conductor';
 import { problemReply } from '../../data/chat/problems';
 import { permissionAnswered, permissionCardWidget, reconcilePermission, runCardWidget } from '../../data/chat/runWidget';
@@ -52,6 +53,16 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
   const track = useRef<Tracked | null>(null);
   const answering = useRef(new Set<string>());
 
+  // Which run belongs to which task (the Chat tab needs it). A resumed run can get a new task.
+  const [runTasks, setRunTasks] = useState(loadRunTasks);
+  const remember = useCallback((taskId: string, runId: string) => {
+    setRunTasks((prev) => {
+      const next = rememberRunTask(prev, taskId, runId);
+      if (next !== prev) saveRunTasks(next);
+      return next;
+    });
+  }, []);
+
   // ---- Is Conductor mode on? ----
 
   const checkConductor = useCallback(async () => {
@@ -78,6 +89,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     (view: Run) => {
       const t = track.current;
       if (t === null || t.id !== view.id) return;
+      remember(view.taskId, view.id);
       if (t.msgId === null) t.msgId = push(runCardWidget(t.title, view));
       // The first time this replaces the "Starting…" placeholder; after that it keeps the Stop state.
       else patch(t.msgId, (w) => runCardWidget(t.title, view, w.kind === 'run' && w.stopping));
@@ -98,7 +110,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
         setRun(null);
       }
     },
-    [push, patch],
+    [push, patch, remember],
   );
 
   /** The run is gone (404, or Conductor mode was turned off): stop following it. */
@@ -218,6 +230,31 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     [ui, push, patch, request, api, applyRun],
   );
 
+  /**
+   * A message to a run from its Chat tab: a follow-up while it is active, or, when it has
+   * finished and can be resumed, a new turn in the same session. A resumed run is followed
+   * from then on (its card comes back). Resolves with the server's answer, or undefined if
+   * the request was abandoned.
+   */
+  const sendToRun = useCallback(
+    async (runId: string, title: string, text: string) => {
+      const result = await request((signal) => api.followUp(runId, text, signal), { quiet: true });
+      if (result?.ok) {
+        remember(result.value.taskId, runId);
+        if (track.current === null && isRunActive(result.value.status)) {
+          track.current = { id: runId, title, msgId: null, perms: new Map() };
+          saveActiveRun({ id: runId, title });
+          setRun({ id: runId, status: result.value.status });
+        }
+      }
+      return result;
+    },
+    [request, api, remember],
+  );
+
+  /** The run that belongs to a task started or continued from this page, if known. */
+  const runIdForTask = useCallback((taskId: string): string | undefined => runTasks[taskId], [runTasks]);
+
   /** Is a run being followed on this page? */
   const runActiveNow = useCallback(() => track.current !== null, []);
 
@@ -276,7 +313,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     [patch, request, api, applyRun],
   );
 
-  return { conductor, checkConductor, refreshConductor, runActive: run !== null, runActiveNow, startRun, startRunExact, followUp, stop, answerPermission };
+  return { conductor, checkConductor, refreshConductor, runActive: run !== null, runActiveNow, sendToRun, runIdForTask, startRun, startRunExact, followUp, stop, answerPermission };
 }
 
 export type RunControls = ReturnType<typeof useRun>;

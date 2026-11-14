@@ -42,7 +42,7 @@ function HomeColumn() {
         </div>
         <Composer task={task} chat={chat} />
       </motion.div>
-      <AnimatePresence>{task && <TaskCard key="task-window" task={task} />}</AnimatePresence>
+      <AnimatePresence>{task && <TaskCard key="task-window" task={task} chat={chat} />}</AnimatePresence>
     </div>
   );
 }
