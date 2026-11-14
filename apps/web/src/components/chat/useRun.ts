@@ -79,7 +79,8 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
       const t = track.current;
       if (t === null || t.id !== view.id) return;
       if (t.msgId === null) t.msgId = push(runCardWidget(t.title, view));
-      else patch(t.msgId, (w) => (w.kind === 'run' ? runCardWidget(t.title, view, w.stopping) : w));
+      // The first time this replaces the "Starting…" placeholder; after that it keeps the Stop state.
+      else patch(t.msgId, (w) => runCardWidget(t.title, view, w.kind === 'run' && w.stopping));
 
       for (const msgId of t.perms.values()) {
         patch(msgId, (w) => (w.kind === 'permission' ? reconcilePermission(w, view) : w));
