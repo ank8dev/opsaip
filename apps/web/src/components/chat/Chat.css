@@ -21,7 +21,7 @@
   background: var(--op-surface); border: 1px solid var(--op-border); color: var(--op-text);
   font-size: 15px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.op-turn-opsy > .op-opsy { margin-top: 2px; }
+.op-turn-avatar { flex: none; margin-top: 2px; }
 .op-turn-body { flex: 1 1 0; min-width: 0; }
 
 /* ---- Widgets ---- */

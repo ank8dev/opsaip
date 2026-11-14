@@ -34,3 +34,15 @@ export function opsyStateFor(message: Extract<ThreadMessage, { from: 'opsy' }>, 
     default: return 'idle';
   }
 }
+
+/**
+ * The id of the message that shows Opsy: the latest one from Opsy, or null
+ * when Opsy has said nothing. Only that message gets the avatar, so there is
+ * one Opsy on screen and its face is the state of the message next to it.
+ */
+export function latestOpsyId(messages: readonly ThreadMessage[]): number | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].from === 'opsy') return messages[i].id;
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { greeting } from '../../data/selectors';
-import { opsyStateFor } from '../../data/chat/opsyState';
+import { latestOpsyId, opsyStateFor } from '../../data/chat/opsyState';
 import { useUi } from '../../state/ui';
 import { rise } from '../../styles/motion';
 import { useNow } from '../../lib/useNow';
@@ -10,12 +10,17 @@ import { WidgetView } from './Widgets';
 import type { Chat } from './useChat';
 import './Chat.css';
 
-const AVATAR = 32;
+/** Larger than before: there is only one Opsy on screen, so it can be seen. */
+const AVATAR = 56;
 
 /**
- * The conversation with Opsy. Opsy's avatar next to each of its messages shows
- * the message's mood; it is decorative, so every message says what it means in
- * words.
+ * The conversation with Opsy. One Opsy: only its latest message has the avatar,
+ * and the avatar's mood is that message's state. Older messages keep an empty
+ * column of the same width, so text does not move when a new message arrives.
+ * The avatar is decorative, so every message says what it means in words.
+ *
+ * Motion: the avatar enters with `rise` from styles/motion.ts, the same
+ * entrance as the rest of the app (reduced motion is already in the tokens).
  */
 export function ChatThread({ chat }: { chat: Chat }) {
   const ui = useUi();
@@ -23,6 +28,7 @@ export function ChatThread({ chat }: { chat: Chat }) {
   const now = useNow();
   const scroller = useRef<HTMLDivElement>(null);
   const { messages } = chat;
+  const avatarId = latestOpsyId(messages);
 
   // A new question scrolls to the top of the view, so a long answer is read from its start.
   useEffect(() => {
@@ -61,7 +67,13 @@ export function ChatThread({ chat }: { chat: Chat }) {
                 </motion.div>
               ) : (
                 <motion.div key={m.id} className="op-turn op-turn-opsy" {...rise(t, 0)}>
-                  <Opsy state={opsyStateFor(m, chat.serverOffline)} size={AVATAR} />
+                  <div className="op-turn-avatar" style={{ width: AVATAR, height: AVATAR }}>
+                    {m.id === avatarId && (
+                      <motion.div {...rise(t, 0)}>
+                        <Opsy state={opsyStateFor(m, chat.serverOffline)} size={AVATAR} />
+                      </motion.div>
+                    )}
+                  </div>
                   <div className="op-turn-body">
                     <span className="op-sr-only">Opsy: </span>
                     <WidgetView
