@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cleanUp, makeRepo, tempDir } from './auth/conductor/testing/conductorTestKit';
 import { ConfigError, DEFAULT_DB_PATH, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_WEB_DIR, loadConfig } from './config';
 
 // A valid token, so the tests of other settings can focus on those settings.
@@ -153,5 +156,55 @@ describe('loadConfig: OPSAIP_TOKEN', () => {
     expect(errorFor({ OPSAIP_TOKEN: withSpace }).message).not.toContain('SECRET');
     // And not via another setting's error either.
     expect(errorFor({ OPSAIP_TOKEN: TOKEN, OPSAIP_PORT: 'x' }).message).not.toContain(TOKEN);
+  });
+});
+
+describe('loadConfig: OPSAIP_CONDUCTOR_DIR (Conductor mode)', () => {
+  afterAll(cleanUp);
+
+  function errorFor(env: Record<string, string>): ConfigError {
+    try {
+      loadConfig(env);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      return error as ConfigError;
+    }
+    throw new Error('expected loadConfig to throw');
+  }
+
+  it('is off by default: no conductorDir on the config', () => {
+    expect(loadConfig(WITH_TOKEN).conductorDir).toBeUndefined();
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_CONDUCTOR_DIR: ' ' }).conductorDir).toBeUndefined();
+  });
+
+  it('sets conductorDir to the repository path on a loopback host', () => {
+    const repo = makeRepo();
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_CONDUCTOR_DIR: repo }).conductorDir).toBe(repo);
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_HOST: '::1', OPSAIP_CONDUCTOR_DIR: repo }).conductorDir).toBe(repo);
+    expect(loadConfig({ ...WITH_TOKEN, OPSAIP_HOST: 'localhost', OPSAIP_CONDUCTOR_DIR: repo }).conductorDir).toBe(repo);
+  });
+
+  it.each([
+    ['a relative path', () => 'some/repo', 'not an absolute path'],
+    ['a missing path', () => join(tempDir(), 'missing'), 'does not exist'],
+    ['a folder that is not a repository', () => tempDir(), 'not a git repository'],
+    ['a subfolder of a repository', () => {
+      const sub = join(makeRepo(), 'src');
+      mkdirSync(sub);
+      return sub;
+    }, 'not its top folder'],
+  ])('stops the server for %s, without the path in the message', (_name, dir, problem) => {
+    const value = dir();
+    const error = errorFor({ ...WITH_TOKEN, OPSAIP_CONDUCTOR_DIR: value });
+    expect(error).toBeInstanceOf(ConfigError);
+    expect(error.message).toContain(problem);
+    expect(error.message).not.toContain(value);
+  });
+
+  it('stops the server when the host is not loopback', () => {
+    const repo = makeRepo();
+    const error = errorFor({ ...WITH_TOKEN, OPSAIP_HOST: '0.0.0.0', OPSAIP_CONDUCTOR_DIR: repo });
+    expect(error).toBeInstanceOf(ConfigError);
+    expect(error.message).toContain('OPSAIP_HOST must be one of 127.0.0.1, ::1, localhost');
   });
 });

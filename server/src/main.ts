@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
+import { createRunManager, type RunManager } from './auth/conductor/runManager';
 import { ConfigError, loadConfig, type Config } from './config';
 import { openDatabase } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
@@ -29,7 +30,11 @@ try {
 // logged; the log lines below print only the address, the database path,
 // the web app folder and the Ask provider and model names.
 const webDir = resolve(config.webDir);
-const server = createApp({ store: createSqliteTaskStore(db), token: config.token, webDir, ask: config.ask });
+const store = createSqliteTaskStore(db);
+// Conductor mode: the repository path is never logged (it is the user's own).
+const conductor: RunManager | undefined =
+  config.conductorDir === undefined ? undefined : createRunManager({ store, repoDir: config.conductorDir });
+const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
@@ -51,13 +56,23 @@ server.listen(port, host, () => {
   } else {
     console.log(`opsaip: Ask is on (${config.ask.name}, model ${config.ask.model})`);
   }
+  if (conductor === undefined) {
+    console.log('opsaip: Conductor mode is off (set OPSAIP_CONDUCTOR_DIR to turn it on)');
+  } else {
+    console.log('opsaip: Conductor mode is on (experimental, agent claude-code)');
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
-    server.close(() => {
-      db.close();
-      process.exit(0);
+    // An active run is stopped first (its pending permission request denied,
+    // then SIGTERM, then SIGKILL), so no agent outlives the server and the
+    // run's task ends as failed instead of staying "running".
+    void (conductor?.stopActive() ?? Promise.resolve()).finally(() => {
+      server.close(() => {
+        db.close();
+        process.exit(0);
+      });
     });
   });
 }

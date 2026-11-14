@@ -4,6 +4,8 @@ import { parseNewTask, parseReport, type TaskStore } from '@opsaip/core';
 import { createAskService, NOT_CONFIGURED } from './ask';
 import { tokenProblem } from './auth/accessToken';
 import type { AskProvider } from './auth/askProvider';
+import { conductorRoutes, type RouteHandler } from './auth/conductor/conductorRoutes';
+import type { RunManager } from './auth/conductor/runManager';
 import { createRequestGuard, webFileForPath } from './auth/requestGuard';
 import { readWebFile } from './webFiles';
 
@@ -20,13 +22,21 @@ export interface AppOptions {
   ask?: AskProvider;
   /** How long the model may take before /v1/ask answers 504. Defaults to ASK_TIMEOUT_MS. */
   askTimeoutMs?: number;
+  /**
+   * Conductor mode runs (auth/conductor/runManager.ts). Without it, Conductor
+   * mode is off: GET /v1/conductor says so and the /v1/runs paths answer 503.
+   */
+  conductor?: RunManager;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
   /** One line per /v1/ask request: status and counts only. Defaults to console.log. */
   log?: (line: string) => void;
 }
 
-type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+type Handler = RouteHandler;
+
+/** A path parameter: one segment, no decoding, no dots or slashes (run ids are UUIDs). */
+const PATH_PARAM = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * Create the HTTP server. It is not listening yet: call server.listen(port, host).
@@ -35,11 +45,16 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  *   POST /v1/ask      { question } -> 200 { answer } | 400 | 413 | 415 | 429 | 502 | 503 | 504
  *   POST /v1/tasks    { title, agent? } -> 201 { task } | 400 | 409 | 413 | 415
  *   GET  /v1/tasks    200 { tasks }
+ *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id, POST /v1/runs/:id/{permission,message,cancel}:
+ *                     Conductor mode, see auth/conductor/conductorRoutes.ts
  *   GET  /healthz     200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
  *
  * Errors are JSON: { "error": "<reason>" }. Unknown path -> 404, known path
- * with another method -> 405 with an Allow header.
+ * with another method -> 405 with an Allow header. A route key may have
+ * ":name" segments: each matches exactly one non-empty path segment of
+ * PATH_PARAM characters, every other segment must be equal, and the segment
+ * count must match. The raw path is used, never decoded.
  *
  * Which paths need the access token is decided in auth/requestGuard.ts:
  * all of them except /healthz and the web app files. It is checked first:
@@ -52,6 +67,7 @@ export function createApp({
   webDir,
   ask,
   askTimeoutMs,
+  conductor,
   logError = defaultLogError,
   log = defaultLog,
 }: AppOptions): Server {
@@ -116,6 +132,7 @@ export function createApp({
         sendJson(res, outcome.status, outcome.body, outcome.headers);
       },
     },
+    ...conductorRoutes({ manager: conductor, readJsonBody, sendJson }),
   };
 
   /**
@@ -176,8 +193,9 @@ export function createApp({
     const webFile = webFileForPath(path);
     if (webFile !== undefined) return sendWebFile(req, res, webFile);
 
-    const methods = Object.hasOwn(routes, path) ? routes[path] : undefined;
-    if (methods === undefined) return sendJson(res, 404, { error: 'not found' });
+    const route = matchRoute(routes, path);
+    if (route === undefined) return sendJson(res, 404, { error: 'not found' });
+    const { methods, params } = route;
 
     const method = req.method ?? '';
     const handler = Object.hasOwn(methods, method) ? methods[method] : undefined;
@@ -186,7 +204,7 @@ export function createApp({
         allow: Object.keys(methods).join(', '),
       });
     }
-    await handler(req, res);
+    await handler(req, res, params);
   }
 
   async function sendWebFile(req: IncomingMessage, res: ServerResponse, file: string): Promise<void> {
@@ -198,6 +216,34 @@ export function createApp({
     res.writeHead(200, { ...found.headers, 'content-length': found.body.length });
     res.end(req.method === 'HEAD' ? undefined : found.body);
   }
+}
+
+/**
+ * The route for a raw path and its parameters, or undefined. An exact key
+ * wins; a key with ":name" segments matches as described at createApp. A
+ * path that contains ":" never matches a pattern key literally.
+ */
+function matchRoute(
+  routes: Record<string, Record<string, Handler>>,
+  path: string,
+): { methods: Record<string, Handler>; params: Record<string, string> } | undefined {
+  if (!path.includes(':') && Object.hasOwn(routes, path)) return { methods: routes[path], params: {} };
+  const segments = path.split('/');
+  for (const [pattern, methods] of Object.entries(routes)) {
+    if (!pattern.includes('/:')) continue;
+    const parts = pattern.split('/');
+    if (parts.length !== segments.length) continue;
+    // No prototype: a parameter named like an Object method cannot clash.
+    const params: Record<string, string> = Object.create(null);
+    const matches = parts.every((part, i) => {
+      if (!part.startsWith(':')) return part === segments[i];
+      if (!PATH_PARAM.test(segments[i])) return false;
+      params[part.slice(1)] = segments[i];
+      return true;
+    });
+    if (matches) return { methods, params };
+  }
+  return undefined;
 }
 
 /** "application/json", any letter case, with or without parameters like charset. */
