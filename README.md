@@ -155,6 +155,13 @@ npm run server                                 # http://127.0.0.1:4100
 | `OPSAIP_LLM_KEY` | none (Ask off) | The provider's API key. Never logged, never returned, never sent to the browser. |
 | `OPSAIP_LLM_MODEL` | `gemini-3.5-flash-lite` | Model id. Only with the two variables above. |
 | `OPSAIP_CONDUCTOR_DIR` | none (off) | Absolute path to a git repository on this machine: turns on [Conductor mode](#conductor-mode-experimental). A bad value stops the server at startup. |
+| `OPSAIP_UPDATE_CHECK` | on | `off` (also `0` or `false`) turns the [update check](#update-check) off: the server then makes no network request for it at all. |
+
+### Update check
+
+The server asks api.github.com for the latest release once a day. Nothing about you or your tasks is sent. There is no automatic download or install: the app is not signed.
+
+The request is `GET https://api.github.com/repos/ank8dev/opsaip/releases/latest` with no token and no data about you or the server. Drafts and prereleases are ignored. The last good answer is kept in memory only; if GitHub cannot be reached, the server logs one line (`opsaip: update check failed (status N | network)`) and goes on. `GET /v1/update` shows the result. Turn it off with `OPSAIP_UPDATE_CHECK=off`.
 
 Endpoints (v0). Every request must send `Authorization: Bearer <token>`, except `GET /healthz`
 and the web app files (`/`, `/index.html`, `/favicon.svg`, `/assets/<file>`); a missing or wrong
@@ -174,6 +181,8 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/runs/:id/permission` | Body: `{ "allow": true, "permissionId": "..." }`. Answers the run's pending permission request. 200 `{ "run" }`; 400; 404; 409 no pending request with that id, or the run has ended; 413; 415; 503 |
 | `POST /v1/runs/:id/message` | Body: `{ "text": "..." }`. A follow-up while the run is active; to a finished run whose Claude Code has exited it resumes the same session in the same worktree (`claude -p --resume <session id>`). 200 `{ "run" }`; 400; 404; 409 not active and not resumable (no session id, still shutting down), or another run is active; 413; 415; 503 |
 | `POST /v1/runs/:id/cancel` | No body. Stops the run. 200 `{ "run" }`; 404; 409 the run has already ended; 503                                       |
+| `GET /v1/about`     | 200 `{ "server": { "version" }, "node", "claude" }`. `claude` is the version of the Claude Code CLI found on the server's `PATH` (`claude --version`, cached for 5 minutes), or `null` when it is missing or does not answer within 3 s. |
+| `GET /v1/update`    | 200 `{ "enabled", "current", "latest", "url", "newer", "checkedAt" }`. `latest`, `url` and `checkedAt` (ISO time) are `null` until a check has succeeded, or when the check is off; `newer` is true only when `latest` is a newer stable version than `current`. See [Update check](#update-check). |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 | `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
 

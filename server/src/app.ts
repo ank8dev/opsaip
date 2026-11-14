@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { parseNewTask, parseReport, type TaskStore } from '@opsaip/core';
+import { createAbout, readServerVersion, type About } from './about';
+import { aboutRoutes } from './aboutRoutes';
 import { createAskService, NOT_CONFIGURED } from './ask';
 import { tokenProblem } from './auth/accessToken';
 import type { AskProvider } from './auth/askProvider';
@@ -9,6 +11,7 @@ import type { RunManager } from './auth/conductor/runManager';
 import { createRequestGuard, webFileForPath } from './auth/requestGuard';
 import { createUploadStore, type UploadStore } from './auth/uploads/uploadStore';
 import { uploadRoutes } from './auth/uploads/uploadRoutes';
+import { createUpdateCheck, type UpdateCheck } from './updateCheck';
 import { readWebFile } from './webFiles';
 
 /** Largest request body accepted, in bytes (16 KB). */
@@ -31,6 +34,10 @@ export interface AppOptions {
   conductor?: RunManager;
   /** Where uploaded files wait (auth/uploads). Defaults to a new in-memory store; tests pass their own. */
   uploads?: UploadStore;
+  /** GET /v1/about. Defaults to the real answer (runs `claude --version`, cached). */
+  about?: () => Promise<About>;
+  /** GET /v1/update. Defaults to a disabled update check (no network). main.ts passes the real one and starts it. */
+  updateCheck?: UpdateCheck;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
   /** One line per /v1/ask request: status and counts only. Defaults to console.log. */
@@ -52,7 +59,8 @@ const PATH_PARAM = /^[A-Za-z0-9_-]{1,100}$/;
  *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id[/transcript], POST /v1/runs/:id/{permission,message,cancel}:
  *                     Conductor mode, see auth/conductor/conductorRoutes.ts
  *   GET  /v1/capabilities, POST /v1/uploads, DELETE /v1/uploads/:id: file attachments, see auth/uploads/uploadRoutes.ts
- *   GET  /healthz    200 "ok"
+ *   GET  /v1/about, GET /v1/update: versions and the update check, see aboutRoutes.ts
+ *   GET  /healthz   200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
  *
  * Errors are JSON: { "error": "<reason>" }. Unknown path -> 404, known path
@@ -74,6 +82,8 @@ export function createApp({
   askTimeoutMs,
   conductor,
   uploads = createUploadStore(),
+  about = createAbout(),
+  updateCheck = createUpdateCheck({ current: readServerVersion(), enabled: false }),
   logError = defaultLogError,
   log = defaultLog,
 }: AppOptions): Server {
@@ -140,6 +150,7 @@ export function createApp({
     },
     ...conductorRoutes({ manager: conductor, readJsonBody, sendJson, uploads }),
     ...uploadRoutes({ store: uploads, ask, agentEnabled: conductor !== undefined, sendJson }),
+    ...aboutRoutes({ about, update: () => updateCheck.status(), sendJson }),
   };
 
   /**
@@ -182,7 +193,10 @@ export function createApp({
       else sendJson(res, 500, { error: 'internal error' });
     });
   });
-  server.on('close', () => uploads.close());
+  server.on('close', () => {
+    uploads.close();
+    updateCheck.stop();
+  });
   return server;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
