@@ -178,3 +178,8 @@ div.op-person:hover { background: transparent; }
 .op-chat-problem { font-size: 11px; line-height: 14px; color: var(--op-error); padding: 0 4px; }
 .op-chats-note { margin: 0; padding: 0 8px; font-size: 11px; line-height: 14px; color: var(--op-error); }
 @media (hover: none) { .op-chat-act { opacity: 1; } }
+/* The quiet update note and the About values */
+.op-update { margin: 0 0 6px; padding: 0 12px; font-size: 12px; line-height: 16px; }
+.op-update a { color: var(--op-text-muted); text-decoration: underline; text-underline-offset: 2px; }
+.op-update a:hover { color: var(--op-text); }
+.op-update a:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 2px; }

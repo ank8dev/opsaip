@@ -17,7 +17,8 @@ export interface ServerProcess {
 
 /**
  * Start the server with exactly `env` as its OPSAIP_* settings: OPSAIP_*
- * variables from the environment running the tests are removed first.
+ * variables from the environment running the tests are removed first. The
+ * update check is off unless `env` says otherwise: tests never use the network.
  */
 export function spawnServer(env: Record<string, string>): ServerProcess {
   const inherited = Object.fromEntries(
@@ -25,7 +26,7 @@ export function spawnServer(env: Record<string, string>): ServerProcess {
   );
   const child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
     cwd: SERVER_DIR,
-    env: { ...inherited, ...env },
+    env: { ...inherited, OPSAIP_UPDATE_CHECK: 'off', ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

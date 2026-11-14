@@ -4,6 +4,7 @@ import { navCounts } from '../../data/selectors';
 import { useWorkspace } from '../../state/workspace';
 import { useUi, type Section } from '../../state/ui';
 import { rise, slideIn } from '../../styles/motion';
+import { UpdateNote } from './UpdateNote';
 import { Wordmark } from '../common/Logo';
 import { Face } from '../common/Face';
 import { AgentsIcon, ChatIcon, McpIcon, RepoIcon, TeamIcon } from '../common/Icons';
@@ -135,6 +136,7 @@ export function Sidebar() {
       </motion.div>
 
       <motion.div className="op-side-foot" {...rise(t, 3)}>
+        <UpdateNote />
         <button
           type="button"
           className="op-me"

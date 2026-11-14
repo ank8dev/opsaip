@@ -9,6 +9,7 @@ import type { ApiResult } from './serverCall';
 import { createTask } from './tasks';
 import { createChat, deleteChat, listChats, loadMessages, renameChat, saveMessages, type ChatInfo } from '../chats/chats';
 import type { ThreadMessage } from './types';
+import { fetchAbout, fetchUpdate, type About, type UpdateInfo } from '../about';
 import { fetchCapabilities, type AttachPurpose, type Capabilities } from '../attachments/capabilities';
 import { deleteUpload, uploadFile, type UploadResult } from '../attachments/upload';
 import { fetchTranscript, type Transcript } from './transcript';
@@ -31,6 +32,8 @@ export interface ServerApi {
   deleteChat: (id: string, signal: AbortSignal) => Promise<ApiResult<true>>;
   loadMessages: (id: string, signal: AbortSignal) => Promise<ApiResult<ThreadMessage[]>>;
   saveMessages: (id: string, messages: readonly ThreadMessage[], signal: AbortSignal) => Promise<ApiResult<ChatInfo>>;
+  about: (signal: AbortSignal) => Promise<ApiResult<About>>;
+  update: (signal: AbortSignal) => Promise<ApiResult<UpdateInfo>>;
   /** What can be attached in Ask and in Agent mode. */
   capabilities: (signal: AbortSignal) => Promise<ApiResult<Capabilities>>;
   upload: (purpose: AttachPurpose, file: Blob & { name: string }, signal: AbortSignal) => Promise<UploadResult>;
@@ -42,7 +45,7 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
   if (token === null) {
     const none = <T>(): Promise<ApiResult<T>> => Promise.resolve({ ok: false, problem: 'unauthorized' });
     return {
-      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none,
+      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none, about: none, update: none,
       listChats: none, createChat: none, renameChat: none, deleteChat: none, loadMessages: none, saveMessages: none,
       upload: () => Promise.resolve({ ok: false, problem: 'unauthorized' }), deleteUpload: () => Promise.resolve(),
     };
@@ -62,6 +65,8 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
     deleteChat: (id, signal) => deleteChat(token, id, signal, fetchImpl),
     loadMessages: (id, signal) => loadMessages(token, id, signal, fetchImpl),
     saveMessages: (id, messages, signal) => saveMessages(token, id, messages, signal, fetchImpl),
+    about: (signal) => fetchAbout(token, signal, fetchImpl),
+    update: (signal) => fetchUpdate(token, signal, fetchImpl),
     capabilities: (signal) => fetchCapabilities(token, signal, fetchImpl),
     upload: (purpose, file, signal) => uploadFile(token, purpose, file, signal, fetchImpl),
     deleteUpload: (id) => deleteUpload(token, id, fetchImpl),

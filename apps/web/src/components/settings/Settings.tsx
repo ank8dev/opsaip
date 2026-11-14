@@ -7,6 +7,7 @@ import { AgentSettings, ApprovalSettings, ToolServerSettings } from './AgentSect
 import { RepositorySettings, SlackSettings, SyncSettings } from './SyncSections';
 import { AppearanceSettings, DataSettings, NotificationSettings } from './PreferenceSections';
 import { ServerSettings } from './ServerSection';
+import { AboutSettings } from './AboutSection';
 import './Settings.css';
 
 const INDEX: [string, string][] = [
@@ -22,6 +23,7 @@ const INDEX: [string, string][] = [
   ['set-notify', 'Notifications'],
   ['set-look', 'Appearance'],
   ['set-data', 'Data & privacy'],
+  ['set-about', 'About'],
 ];
 
 const NOTE = 'Preview — changes apply on this page only and aren’t saved yet.';
@@ -123,6 +125,7 @@ export function Settings() {
             <NotificationSettings />
             <AppearanceSettings />
             <DataSettings />
+            <AboutSettings />
           </div>
         </div>
       </div>
