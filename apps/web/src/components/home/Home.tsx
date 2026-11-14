@@ -42,7 +42,7 @@ function HomeColumn() {
           <TrayList />
           <TrayBar />
         </div>
-        <Composer task={task} onAsk={chat.send} askBusy={chat.busy} />
+        <Composer task={task} chat={chat} />
       </motion.div>
     </div>
   );

@@ -1,10 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { AnyTask, LocalTask } from '../../types';
 import { isLocal } from '../../types';
 import { clockFor, firstName } from '../../data/selectors';
 import { LOCAL_PREFIX, useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { ASK_MAX_QUESTION } from '../../data/chat/ask';
+import { conductorOffNote, RUN_PROMPT_MAX } from '../../data/chat/conductor';
+import { problemText } from '../../data/chat/problems';
+import { TASK_TITLE_MAX } from '../../data/chat/tasks';
+import type { Chat } from '../chat/useChat';
 import { Face } from '../common/Face';
 import { Picker, type PickerOption } from '../common/Picker';
 import { ModeMenu, type ComposeMode } from './ModeMenu';
@@ -19,14 +23,12 @@ let localSeq = 0;
 
 interface ComposerProps {
   task: AnyTask | null;
-  /** Ask mode: send a question to the chat. */
-  onAsk: (question: string) => void;
-  /** An answer is still on its way: one question at a time. */
-  askBusy: boolean;
+  /** The chat: Ask, and in Live mode Task and Agent, go through it. */
+  chat: Chat;
 }
 
 /** Where you talk to Opsaip: ask Opsy, create a task, message a teammate, start an agent, or announce. */
-export function Composer({ task, onAsk, askBusy }: ComposerProps) {
+export function Composer({ task, chat }: ComposerProps) {
   const { ws, people, addLocalTask, changeTask, addMessage, readOnly } = useWorkspace();
   const ui = useUi();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -40,6 +42,11 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
   const slack = ws.channels.find((c) => c.channel === 'Slack');
   const slackOk = slack?.status === 'Connected';
   const asking = mode === 'ask';
+  // Live: Ask, Task and Agent reach the server. Message and Announce stay read-only.
+  const liveTask = readOnly && mode === 'task';
+  const liveAgent = readOnly && mode === 'agent';
+  const following = liveAgent && chat.runActive;
+  const askBusy = chat.busy;
   const viaSlack = mode === 'message' || mode === 'announce';
   const canSend = !viaSlack || slackOk;
 
@@ -61,6 +68,7 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
   const person = people[personId];
   const placeholder =
     asking ? 'Ask about your tasks…'
+    : following ? 'Send a follow-up to Claude Code…'
     : mode === 'agent' ? typed
     : mode === 'message' && person
       ? task ? `Write to ${firstName(person.name)} about this task…` : `Message ${firstName(person.name)}…`
@@ -75,6 +83,12 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [text, mode]);
+
+  function changeMode(m: ComposeMode) {
+    setMode(m);
+    if (m === 'agent') chat.refreshConductor();
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
 
   function prefill(value: string) {
     setText(value);
@@ -107,12 +121,22 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
     }), 8400);
   }
 
+  /** Live Task or Agent: clear the box only once the server took it, so a refusal does not lose your text. */
+  function sendLive(go: (value: string) => Promise<boolean>, value: string) {
+    void go(value).then((ok) => { if (ok) setText((now) => (now.trim() === value ? '' : now)); });
+  }
+
   function submit() {
     const value = text.trim();
     if (!value || !canSend) return;
     if (asking) {
       if (askBusy) return;
-      onAsk(value);
+      chat.send(value);
+    } else if (liveTask || liveAgent) {
+      if (askBusy || (liveAgent && chat.conductor.state !== 'on')) return;
+      sendLive(liveTask ? chat.createTask : following ? chat.followUp : chat.startRun, value);
+      inputRef.current?.focus();
+      return;
     } else if (mode === 'message') {
       const to = person?.name ?? 'teammate';
       if (task) {
@@ -154,17 +178,40 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
     detail: [people[c.owner]?.name, c.status === 'Connected' ? '' : 'offline'].filter(Boolean).join(' · '),
   }));
 
-  // Server data is read-only for now: only Ask can reach the server.
-  if (readOnly && !asking) {
+  // Live: what cannot be done here gets a plain note instead of the input.
+  const unavailable = unavailableNote();
+  function unavailableNote(): ReactNode {
+    if (!readOnly || asking || liveTask) return null;
+    if (!liveAgent) return 'Read-only. Messaging teammates and announcing through Slack come later.';
+    const c = chat.conductor;
+    if (c.state === 'on') return null;
+    if (c.state === 'off') {
+      const n = conductorOffNote(c.reason);
+      return (
+        <>
+          {n.text}{n.reason !== undefined && <> The server says: {n.reason}</>}{' '}
+          <a href={n.link.href} target="_blank" rel="noopener noreferrer">{n.link.label}</a>
+        </>
+      );
+    }
+    if (c.state === 'failed') {
+      return (
+        <>
+          I could not check whether Conductor mode is on. {problemText(c.problem)}{' '}
+          <button type="button" className="op-linkbtn" onClick={() => void chat.checkConductor()}>Check again</button>
+        </>
+      );
+    }
+    return 'Checking whether Conductor mode is on…';
+  }
+  if (unavailable !== null) {
     return (
       <div className="op-glowbox">
         <div className="op-ring">
           <div className="op-composer op-composer-readonly">
-            <p className="op-readonly-note">
-              Read-only. Agents report tasks to your server through MCP; starting and answering tasks from here comes later.
-            </p>
+            <p className="op-readonly-note" role="status">{unavailable}</p>
             <div className="op-bar">
-              <ModeMenu mode={mode} onChange={(m) => { setMode(m); requestAnimationFrame(() => inputRef.current?.focus()); }} />
+              <ModeMenu mode={mode} onChange={changeMode} />
             </div>
           </div>
         </div>
@@ -177,12 +224,14 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
       <div className="op-ring">
         <div className="op-composer">
           <div className="op-to">
-            <span>{TO[mode]}</span>
-            {(mode === 'task' || mode === 'message') && (
+            <span>{liveTask ? 'Add to' : TO[mode]}</span>
+            {liveTask && <span className="op-to-v">your server’s tasks</span>}
+            {liveAgent && <span className="op-to-v">Claude Code</span>}
+            {!readOnly && (mode === 'task' || mode === 'message') && (
               <Picker ariaLabel="Teammate" value={personId} options={personOptions} onChange={setPersonId} display={(o) => o.label} />
             )}
             {task && mode === 'message' && <span className="op-to-about">about “{task.task}”</span>}
-            {mode === 'agent' && (
+            {mode === 'agent' && !readOnly && (
               <Picker
                 ariaLabel="Agent"
                 value={agentId}
@@ -207,7 +256,7 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
             className="op-input"
             rows={1}
             placeholder={placeholder}
-            maxLength={asking ? ASK_MAX_QUESTION : undefined}
+            maxLength={asking ? ASK_MAX_QUESTION : liveTask ? TASK_TITLE_MAX : liveAgent ? RUN_PROMPT_MAX : undefined}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -220,12 +269,12 @@ export function Composer({ task, onAsk, askBusy }: ComposerProps) {
           <div className="op-bar">
             <ModeMenu
               mode={mode}
-              onChange={(m) => { setMode(m); inputRef.current?.focus(); }}
+              onChange={changeMode}
             />
             {task && <QuickActions task={task} prefill={prefill} />}
             <span className="op-note" data-flash={ui.hint.flash} title={ui.hint.text} aria-live="polite">{ui.hint.text}</span>
-            <button type="button" className="op-btn" disabled={!text.trim() || !canSend || (asking && askBusy)} onClick={submit}>
-              {VERB[mode]}
+            <button type="button" className="op-btn" disabled={!text.trim() || !canSend || (readOnly && askBusy)} onClick={submit}>
+              {following ? 'Send' : VERB[mode]}
             </button>
           </div>
         </div>

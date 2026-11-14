@@ -30,6 +30,14 @@ export function ChatThread({ chat }: { chat: Chat }) {
     you?.[you.length - 1]?.scrollIntoView({ block: 'start', behavior: t.reduced ? 'auto' : 'smooth' });
   }, [messages.length, t.reduced]);
 
+  // A request that needs you is brought into view, even when a long run card sits above it.
+  const needsYou = messages.filter((m) => m.from === 'opsy' && m.widget.kind === 'permission' && m.widget.state === 'pending').length;
+  useEffect(() => {
+    if (needsYou === 0) return;
+    const cards = scroller.current?.querySelectorAll('.op-w-perm[data-status="pending"]');
+    cards?.[cards.length - 1]?.scrollIntoView({ block: 'nearest', behavior: t.reduced ? 'auto' : 'smooth' });
+  }, [needsYou, t.reduced]);
+
   return (
     <div className="op-thread" ref={scroller}>
       {messages.length === 0 ? (
@@ -56,7 +64,12 @@ export function ChatThread({ chat }: { chat: Chat }) {
                   <Opsy state={opsyStateFor(m, chat.serverOffline)} size={AVATAR} />
                   <div className="op-turn-body">
                     <span className="op-sr-only">Opsy: </span>
-                    <WidgetView widget={m.widget} onDecide={(d) => chat.decide(m.id, d)} />
+                    <WidgetView
+                      widget={m.widget}
+                      onDecide={(d) => chat.decide(m.id, d)}
+                      onAnswer={(allow) => void chat.answerPermission(m.id, allow)}
+                      onStop={() => void chat.stop()}
+                    />
                   </div>
                 </motion.div>
               ),

@@ -81,6 +81,17 @@
 .op-w-outcome { font-size: 13px; line-height: 20px; color: var(--op-text-secondary); }
 .op-w-outcome:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 4px; }
 
+/* Conductor run card and permission request */
+.op-w-run { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--op-surface); border: 1px solid var(--op-border); }
+.op-w-run .op-w-label { margin-top: 0; }
+.op-w-run[data-status="failed"] .op-w-lead { color: var(--op-error); }
+.op-w-status { display: flex; align-items: center; gap: 2px; font-size: 14px; line-height: 20px; color: var(--op-text-secondary); }
+.op-w-status .op-dotbox { width: 20px; }
+.op-w-pre { white-space: pre-wrap; }
+.op-w-run code, .op-w-perm code { font-family: var(--op-mono, 'DM Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
+.op-w-perm .op-w-quote { margin: 0; }
+.op-w-acts .op-sbtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---- Suggestions ---- */
 .op-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0; }
 .op-chip {
