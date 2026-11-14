@@ -163,8 +163,8 @@ describe('source "you"', () => {
   });
 
   it('a task you created is yours: owner me, which the chat shows as You', () => {
-    expect(toUiTask({ ...valid, source: 'you' }).owner).toBe('me');
-    expect(toUiTask(valid).owner).toBe('');
+    expect(toUiTask({ ...valid, status: 'running' as const, source: 'you' as const }).owner).toBe('me');
+    expect(toUiTask({ ...valid, status: 'running' as const }).owner).toBe('');
   });
 
   it('parseServerTask reads one task, or undefined', () => {
