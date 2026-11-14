@@ -24,6 +24,25 @@ const MIGRATIONS: readonly string[] = [
   // 2 -> 3: who created the task ("you" for a task a person made). NULL
   // means "not set", which is every task an agent created and every old row.
   `ALTER TABLE tasks ADD COLUMN source TEXT;`,
+  // 3 -> 4: chats of the Ask screen. seq is the position of a message in its
+  // chat (0-based); widget is opaque JSON the server never reads, or NULL.
+  // Deleting a chat deletes its messages (foreign keys are on, see openDatabase).
+  `CREATE TABLE chats (
+     id         TEXT PRIMARY KEY,
+     title      TEXT NOT NULL,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   ) STRICT;
+   CREATE TABLE chat_messages (
+     chat_id TEXT    NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+     seq     INTEGER NOT NULL,
+     role    TEXT    NOT NULL CHECK (role IN ('you', 'opsy')),
+     text    TEXT    NOT NULL,
+     widget  TEXT,
+     at      TEXT    NOT NULL,
+     PRIMARY KEY (chat_id, seq)
+   ) STRICT;
+   CREATE INDEX chats_updated_at ON chats (updated_at);`,
 ];
 
 /** The schema this code reads and writes, stored in SQLite's PRAGMA user_version. */
@@ -40,6 +59,9 @@ export function openDatabase(path: string): DatabaseSync {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   try {
+    // Per connection, and a no-op inside a transaction: so it is set here,
+    // before migrate() starts one.
+    db.exec('PRAGMA foreign_keys = ON');
     migrate(db);
     return db;
   } catch (error) {

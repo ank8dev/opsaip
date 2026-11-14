@@ -11,6 +11,9 @@ import type { RunManager } from './auth/conductor/runManager';
 import { createRequestGuard, webFileForPath } from './auth/requestGuard';
 import { createUploadStore, type UploadStore } from './auth/uploads/uploadStore';
 import { uploadRoutes } from './auth/uploads/uploadRoutes';
+import { chatRoutes } from './chatRoutes';
+import { createChatStore, type ChatStore } from './chatStore';
+import { openDatabase } from './db';
 import { createUpdateCheck, type UpdateCheck } from './updateCheck';
 import { readWebFile } from './webFiles';
 
@@ -34,6 +37,8 @@ export interface AppOptions {
   conductor?: RunManager;
   /** Where uploaded files wait (auth/uploads). Defaults to a new in-memory store; tests pass their own. */
   uploads?: UploadStore;
+  /** Where chats are kept (chatStore.ts). Defaults to a new in-memory database; tests pass their own. */
+  chats?: ChatStore;
   /** GET /v1/about. Defaults to the real answer (runs `claude --version`, cached). */
   about?: () => Promise<About>;
   /** GET /v1/update. Defaults to a disabled update check (no network). main.ts passes the real one and starts it. */
@@ -53,9 +58,10 @@ const PATH_PARAM = /^[A-Za-z0-9_-]{1,100}$/;
  * Create the HTTP server. It is not listening yet: call server.listen(port, host).
  *
  *   POST /v1/reports  JSON StatusReport -> 200 { task } | 400 | 409 | 413 | 415
- *   POST /v1/ask      { question } -> 200 { answer, action } | 400 | 413 | 415 | 429 | 502 | 503 | 504
+ *   POST /v1/ask      { question, history?, attachments? } -> 200 { answer, action } | 400 | 413 | 415 | 429 | 502 | 503 | 504
  *   POST /v1/tasks    { title, agent? } -> 201 { task } | 400 | 409 | 413 | 415
  *   GET  /v1/tasks    200 { tasks }
+ *   GET/POST /v1/chats, PATCH/DELETE /v1/chats/:id, GET/PUT /v1/chats/:id/messages: saved Ask chats, see chatRoutes.ts
  *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id[/transcript], POST /v1/runs/:id/{permission,message,cancel}:
  *                     Conductor mode, see auth/conductor/conductorRoutes.ts
  *   GET  /v1/capabilities, POST /v1/uploads, DELETE /v1/uploads/:id: file attachments, see auth/uploads/uploadRoutes.ts
@@ -82,6 +88,7 @@ export function createApp({
   askTimeoutMs,
   conductor,
   uploads = createUploadStore(),
+  chats,
   about = createAbout(),
   updateCheck = createUpdateCheck({ current: readServerVersion(), enabled: false }),
   logError = defaultLogError,
@@ -95,6 +102,9 @@ export function createApp({
     ask === undefined
       ? undefined
       : createAskService({ provider: ask, tasks: () => store.all(), log, timeoutMs: askTimeoutMs, uploads });
+  // Without a given store, chats live in their own in-memory database, closed with the server.
+  const chatDb = chats === undefined ? openDatabase(':memory:') : undefined;
+  const chatStore = chats ?? createChatStore(chatDb!);
   const routes: Record<string, Record<string, Handler>> = {
     '/healthz': {
       GET: (_req, res) => sendText(res, 200, 'ok'),
@@ -148,6 +158,7 @@ export function createApp({
         sendJson(res, outcome.status, outcome.body, outcome.headers);
       },
     },
+    ...chatRoutes({ store: chatStore, readJsonBody, sendJson }),
     ...conductorRoutes({ manager: conductor, readJsonBody, sendJson, uploads }),
     ...uploadRoutes({ store: uploads, ask, agentEnabled: conductor !== undefined, sendJson }),
     ...aboutRoutes({ about, update: () => updateCheck.status(), sendJson }),
@@ -155,11 +166,13 @@ export function createApp({
 
   /**
    * Read a JSON request body, or send the error response (415, 413 or 400)
-   * and return ok: false.
+   * and return ok: false. The body may be up to `limit` bytes (default
+   * MAX_BODY_BYTES); a route that needs more passes its own limit.
    */
   async function readJsonBody(
     req: IncomingMessage,
     res: ServerResponse,
+    limit: number = MAX_BODY_BYTES,
   ): Promise<{ ok: true; input: unknown } | { ok: false }> {
     if (!isJsonContentType(req.headers['content-type'])) {
       // A browser can send a cross-site "simple" POST (text/plain, form)
@@ -168,10 +181,10 @@ export function createApp({
       return { ok: false };
     }
 
-    const body = await readBody(req, MAX_BODY_BYTES);
+    const body = await readBody(req, limit);
     if (body === undefined) {
       // Close the connection: the rest of an oversized body is not read.
-      sendJson(res, 413, { error: `body must be at most ${MAX_BODY_BYTES} bytes` }, {
+      sendJson(res, 413, { error: `body must be at most ${limit} bytes` }, {
         connection: 'close',
       });
       return { ok: false };
@@ -195,6 +208,7 @@ export function createApp({
   });
   server.on('close', () => {
     uploads.close();
+    chatDb?.close();
     updateCheck.stop();
   });
   return server;
