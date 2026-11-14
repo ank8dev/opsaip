@@ -24,7 +24,7 @@ describe('problemFor: statuses per action', () => {
   });
 
   it('has a table for every action', () => {
-    expect(Object.keys(STATUS_PROBLEM).sort()).toEqual(['cancel', 'capabilities', 'conductor', 'createTask', 'getRun', 'message', 'permission', 'startRun', 'transcript', 'upload']);
+    expect(Object.keys(STATUS_PROBLEM).sort()).toEqual(['cancel', 'capabilities', 'chats', 'conductor', 'createTask', 'getRun', 'message', 'permission', 'startRun', 'transcript', 'upload']);
   });
 });
 

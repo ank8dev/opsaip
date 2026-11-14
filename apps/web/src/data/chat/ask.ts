@@ -72,13 +72,15 @@ export async function askQuestion(
   fetchImpl: typeof fetch = globalThis.fetch,
   /** Upload ids (POST /v1/uploads, purpose ask). The files are sent to the server's LLM provider. */
   attachments: readonly string[] = [],
+  /** The last few messages of the CURRENT chat, as context. Never another chat. */
+  history: readonly { role: 'you' | 'opsy'; text: string }[] = [],
 ): Promise<AskResult> {
   let res: Response;
   try {
     res = await fetchImpl(ASK_PATH, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(attachments.length > 0 ? { question, attachments } : { question }),
+      body: JSON.stringify({ question, ...(attachments.length > 0 ? { attachments } : {}), ...(history.length > 0 ? { history } : {}) }),
       signal,
       cache: 'no-store',
       redirect: 'error', // a redirect means a misconfigured proxy; do not follow it with the token

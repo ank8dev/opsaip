@@ -1,5 +1,6 @@
 import { WorkspaceProvider, useWorkspace } from './state/workspace';
 import { UiProvider } from './state/ui';
+import { ChatsProvider } from './state/chats';
 import { AppShell } from './components/shell/AppShell';
 import { ConnectScreen } from './components/connect/ConnectScreen';
 
@@ -13,7 +14,9 @@ export function App() {
   return (
     <WorkspaceProvider>
       <UiProvider>
-        <Gate />
+        <ChatsProvider>
+          <Gate />
+        </ChatsProvider>
       </UiProvider>
     </WorkspaceProvider>
   );
