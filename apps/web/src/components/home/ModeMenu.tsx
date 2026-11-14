@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMotionTokens } from '../../state/ui';
 import { popover } from '../../styles/motion';
-import { AgentsIcon, AnnounceIcon, MessageIcon, TaskIcon } from '../common/Icons';
+import { AgentsIcon, AnnounceIcon, AskIcon, MessageIcon, TaskIcon } from '../common/Icons';
 
-export type ComposeMode = 'task' | 'message' | 'agent' | 'announce';
+export type ComposeMode = 'ask' | 'task' | 'message' | 'agent' | 'announce';
 
 export const MODES: { key: ComposeMode; title: string; description: string; Icon: typeof TaskIcon }[] = [
+  { key: 'ask', title: 'Ask', description: 'Ask Opsy about your tasks', Icon: AskIcon },
   { key: 'task', title: 'Task', description: 'Assign work to a teammate', Icon: TaskIcon },
   { key: 'message', title: 'Message', description: 'Write to one teammate on Slack', Icon: MessageIcon },
   { key: 'agent', title: 'Agent', description: 'Start Claude Code or Codex', Icon: AgentsIcon },
@@ -19,7 +20,7 @@ interface ModeMenuProps {
   onChange: (m: ComposeMode) => void;
 }
 
-/** One button that shows the current mode and opens a menu of all four. */
+/** One button that shows the current mode and opens a menu of all five. */
 export function ModeMenu({ mode, onChange }: ModeMenuProps) {
   const t = useMotionTokens();
   const [open, setOpen] = useState(false);

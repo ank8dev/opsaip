@@ -1,26 +1,21 @@
-/* ===== Main column: greeting, then the composer pinned to the bottom ===== */
+/* ===== Main column: the chat thread, then the composer pinned to the bottom ===== */
 .op-main {
   position: relative; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain;
   display: flex; flex-direction: column; align-items: center;
   padding: 20px 24px;
 }
 .op-main::-webkit-scrollbar { display: none; }
-.op-col { flex: 1 0 auto; margin-top: calc(12vh + 20px); width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 32px; }
+.op-col { flex: 1 1 0; min-height: 0; width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 12px; }
 .op-composer-wrap { position: relative; margin-top: auto; }
 
-.op-greet { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
-.op-symbol { width: 40px; height: 40px; display: block; }
-.op-symbol .op-baton-mark { fill: var(--op-text); }
-.op-symbol .op-tip { fill: var(--op-logo-dot); }
-.op-hello { margin: 0; font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.02em; color: var(--op-text); }
-
-/* An open tray takes the greeting's place, so the composer never leaves the screen */
-.op-col[data-tray="open"] { margin-top: 0; }
-.op-col[data-tray="open"] .op-greet { display: none; }
+/* An open tray takes the thread's place, so the composer never leaves the screen */
+.op-col[data-tray="open"] .op-thread,
+.op-col[data-tray="open"] .op-chips { display: none; }
 
 /* An open task: the window above the composer grows to the top */
-.op-col[data-mode="card"] { flex: 1 1 0; min-height: 0; margin-top: 0; gap: 0; }
-.op-col[data-mode="card"] .op-greet,
+.op-col[data-mode="card"] { gap: 0; }
+.op-col[data-mode="card"] .op-thread,
+.op-col[data-mode="card"] .op-chips,
 .op-col[data-mode="card"] .op-tray-bar,
 .op-col[data-mode="card"] .op-tray-body { display: none; }
 .op-col[data-mode="card"] .op-composer-wrap,
@@ -214,11 +209,9 @@
 
 @media (max-width: 860px) {
   .op-main { padding: 16px; }
-  .op-col { margin-top: 24px; }
   .op-tray .op-scroll { max-height: max(120px, calc(58dvh - 290px)); }
 }
 @media (max-width: 480px) {
-  .op-hello { font-size: 32px; line-height: 38px; }
   .op-grid { grid-template-columns: 24px minmax(0, 1fr) 80px; }
   .op-c3 { display: none; }
   .op-c4 { grid-column: 3; }
