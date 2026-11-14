@@ -5,6 +5,8 @@
 export interface AskPrompt {
   system: string;
   user: string;
+  /** When set, the model must reply with JSON that matches this schema (Gemini responseSchema). */
+  responseSchema?: object;
 }
 
 /**

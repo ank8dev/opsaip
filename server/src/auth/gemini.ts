@@ -11,7 +11,7 @@ export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta
  * includes the model's thinking, so it must leave room for that as well as
  * for the answer itself.
  */
-export const GEMINI_MAX_OUTPUT_TOKENS = 2048;
+export const GEMINI_MAX_OUTPUT_TOKENS = 4096;
 
 // finishReason / blockReason are enum names like "SAFETY". Logged only if they look like one.
 const ENUM_NAME = /^[A-Z_]{1,40}$/;
@@ -65,7 +65,13 @@ function requestBody(prompt: AskPrompt): unknown {
   return {
     systemInstruction: { parts: [{ text: prompt.system }] },
     contents: [{ role: 'user', parts: [{ text: prompt.user }] }],
-    generationConfig: { temperature: 0.2, maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS },
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      ...(prompt.responseSchema === undefined
+        ? {}
+        : { responseMimeType: 'application/json', responseSchema: prompt.responseSchema }),
+    },
   };
 }
 
