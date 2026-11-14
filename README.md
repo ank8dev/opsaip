@@ -167,11 +167,12 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
-| `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `reason` (only when off) says how to turn Conductor mode on.        |
+| `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"?, "repo"?, "active"? }`. `reason` (only when off) says how to turn Conductor mode on. `repo` (only when on) is the folder name of `OPSAIP_CONDUCTOR_DIR`, never its full path; `active` says whether a run is active. |
 | `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "..." }`. Starts a [Conductor](#conductor-mode-experimental) run. 201 `{ "run" }`; 400 invalid input; 409 a run is already active; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
 | `GET /v1/runs/:id`  | 200 `{ "run" }`; 404 unknown run; 503 off                                                                                           |
+| `GET /v1/runs/:id/transcript` | 200 `{ "transcript": { "entries": [{ "id", "role": "you"\|"agent", "kind": "prompt"\|"followup"\|"message", "text", "at" }], "finished", "canResume", "truncated" } }`; 404 unknown run; 503 off. In memory only: at most 200 entries and 200 000 characters per run (oldest dropped first), 8000 characters per entry. `finished`: the run accepts no more follow-ups (until resumed). `canResume`: it has finished, its agent has exited and its session id is known, so a follow-up resumes it. The session id is kept in memory only and never shown. |
 | `POST /v1/runs/:id/permission` | Body: `{ "allow": true, "permissionId": "..." }`. Answers the run's pending permission request. 200 `{ "run" }`; 400; 404; 409 no pending request with that id, or the run has ended; 413; 415; 503 |
-| `POST /v1/runs/:id/message` | Body: `{ "text": "..." }`. A follow-up while the run is active. 200 `{ "run" }`; 400; 404; 409 the run is not active; 413; 415; 503 |
+| `POST /v1/runs/:id/message` | Body: `{ "text": "..." }`. A follow-up while the run is active; to a finished run whose Claude Code has exited it resumes the same session in the same worktree (`claude -p --resume <session id>`). 200 `{ "run" }`; 400; 404; 409 not active and not resumable (no session id, still shutting down), or another run is active; 413; 415; 503 |
 | `POST /v1/runs/:id/cancel` | No body. Stops the run. 200 `{ "run" }`; 404; 409 the run has already ended; 503                                       |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 | `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
@@ -332,7 +333,11 @@ never print the path. Unset the variable to turn Conductor mode off.
    the exit code), when you stop it ("Stopped by you"), or when a permission request gets no answer
    within 30 minutes (Opsaip denies it and stops the run).
 5. When Claude Code finishes its answer, the run is over: Opsaip closes its input. A follow-up
-   (`POST /v1/runs/:id/message`) is accepted only while the run is still working. If Claude Code
+   (`POST /v1/runs/:id/message`) goes to the agent while the run is still working. After the run,
+   once Claude Code has exited, a follow-up resumes the same Claude Code session in the same
+   worktree (needs the session id, kept in memory only: lost when the server restarts). A failed
+   run goes back in line on its task; a done task is final, so the run moves to a new task with
+   the same title. If Claude Code
    has not exited 10 seconds later (for example it waits for background work it started), Opsaip
    stops it: SIGTERM, then SIGKILL to its whole process group 5 seconds after.
 

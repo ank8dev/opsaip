@@ -11,10 +11,13 @@
 /** Longest line kept from the agent, in characters. A longer line is dropped whole. */
 export const MAX_AGENT_LINE_CHARS = 8 * 1024 * 1024;
 
+/** What a session id may look like (Claude Code uses UUIDs). It goes into an argv entry, so keep it plain. */
+const SESSION_ID = /^[A-Za-z0-9._-]{1,200}$/;
+
 /** What one line of the agent's output means to a run. */
 export type AgentLine =
-  /** {"type":"system","subtype":"init",...}: the session is up. */
-  | { kind: 'init' }
+  /** {"type":"system","subtype":"init","session_id":"...",...}: the session is up. sessionId only if it looks like one. */
+  | { kind: 'init'; sessionId?: string }
   /** {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}: the agent's text. */
   | { kind: 'message'; text: string }
   /**
@@ -39,7 +42,10 @@ export function parseAgentLine(line: string): AgentLine | undefined {
   if (typeof event !== 'object' || event === null || Array.isArray(event)) return undefined;
   const { type, subtype } = event as Record<string, unknown>;
 
-  if (type === 'system' && subtype === 'init') return { kind: 'init' };
+  if (type === 'system' && subtype === 'init') {
+    const { session_id: sessionId } = event as Record<string, unknown>;
+    return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? { kind: 'init', sessionId } : { kind: 'init' };
+  }
 
   if (type === 'assistant') {
     const { message, parent_tool_use_id: parent } = event as Record<string, unknown>;

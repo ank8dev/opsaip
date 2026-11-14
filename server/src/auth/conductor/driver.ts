@@ -41,6 +41,11 @@
 export type RunEvent =
   /** The agent process is running. */
   | { type: 'started' }
+  /**
+   * The agent's session id, from its init event (once per process). The run
+   * keeps it in memory to resume the session later. Never logged or shown.
+   */
+  | { type: 'session'; sessionId: string }
   /** The agent wrote text (its latest message, not a delta). */
   | { type: 'message'; text: string }
   /** The agent needs a person to allow or deny a tool call. Answer with answerPermission. */
@@ -69,6 +74,8 @@ export interface DriverStartOptions {
   cwd: string;
   /** The first message. Goes to the agent's stdin, never into argv. */
   prompt: string;
+  /** Continue this earlier session of the agent (its history) instead of starting a new one. */
+  resumeSessionId?: string;
   /** Receives every event, in order. Called synchronously, never after "exited". */
   onEvent(event: RunEvent): void;
 }

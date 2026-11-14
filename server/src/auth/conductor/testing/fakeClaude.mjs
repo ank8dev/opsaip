@@ -5,6 +5,8 @@
 // permissionMcp.mjs, over the real socket) and calls its approve tool.
 // It never contacts any model and needs no credentials.
 //
+// The init event carries a session_id; --resume <id> is accepted and echoed in it.
+//
 //   node fakeClaude.mjs --scenario <name> [--record <file>] <claude flags...>
 //
 // --record appends one JSON line per notable thing to <file> (argv, env
@@ -44,6 +46,8 @@ for (const required of ['-p', '--verbose', '--strict-mcp-config']) {
   if (!args.includes(required)) fatal(`missing ${required}`);
 }
 if (flag('--input-format') !== 'stream-json' || flag('--output-format') !== 'stream-json') fatal('not stream-json');
+// The session id a fresh run reports. A resumed run (--resume <id>) reports that id back.
+const FAKE_SESSION_ID = 'fake-session-0001';
 const promptTool = flag('--permission-prompt-tool');
 
 // --- signals -----------------------------------------------------------------
@@ -120,7 +124,7 @@ const tools = await rpc('tools/list', {});
 const toolNames = tools.result.tools.map((tool) => `mcp__${serverName}__${tool.name}`);
 record({ event: 'mcp', protocolVersion: init.result.protocolVersion, toolNames });
 if (!toolNames.includes(promptTool)) fatal('permission prompt tool not found');
-out({ type: 'system', subtype: 'init', session_id: 'fake', cwd: process.cwd(), tools: toolNames, mcp_servers: [{ name: serverName, status: 'connected' }], permissionMode: flag('--permission-mode') });
+out({ type: 'system', subtype: 'init', session_id: flag('--resume') ?? FAKE_SESSION_ID, cwd: process.cwd(), tools: toolNames, mcp_servers: [{ name: serverName, status: 'connected' }], permissionMode: flag('--permission-mode') });
 
 const prompt = await nextUserMessage();
 record({ event: 'prompt', text: prompt });

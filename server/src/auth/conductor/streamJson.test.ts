@@ -4,7 +4,9 @@ import { summarizeToolCall, truncate } from './toolSummary';
 
 describe('parseAgentLine', () => {
   it('reads the system init event', () => {
-    expect(parseAgentLine('{"type":"system","subtype":"init","session_id":"s","tools":[]}')).toEqual({ kind: 'init' });
+    expect(parseAgentLine('{"type":"system","subtype":"init","session_id":"s","tools":[]}')).toEqual({ kind: 'init', sessionId: 's' });
+    expect(parseAgentLine('{"type":"system","subtype":"init"}')).toEqual({ kind: 'init' });
+    expect(parseAgentLine('{"type":"system","subtype":"init","session_id":"--evil flag"}')).toEqual({ kind: 'init' });
   });
 
   it('reads the text blocks of a main-thread assistant message, joined', () => {
