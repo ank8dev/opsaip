@@ -22,3 +22,4 @@ export {
   type CreateTaskResult,
   type TaskStore,
 } from './taskStore';
+export { attention, type Attention, type AttentionTask } from './attention';

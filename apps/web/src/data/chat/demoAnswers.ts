@@ -7,6 +7,7 @@
 
 import type { Person, Task, TaskStatus } from '../../types';
 import { byImportance, byStatus } from '../selectors';
+import { attentionOf } from '../attention';
 import type {
   AgentWidget, BriefWidget, NeedsWidget, ProposalStatus, ProposalWidget, TaskLine, TaskListWidget, TextWidget, Widget,
 } from './types';
@@ -42,6 +43,19 @@ export const UNKNOWN_QUESTION = 'In the demo I only understand the suggestions b
 export interface AnswerContext {
   tasks: readonly Task[];
   people: Readonly<Record<string, Person>>;
+  /** Tasks with a permission request nobody has answered: they need you, whatever their status says. */
+  pendingPermissionTaskIds?: readonly string[];
+}
+
+/**
+ * The tasks as the answers see them: a task that needs you (the one shared
+ * definition in data/attention.ts) has the status "Needs you", so the Brief,
+ * the lists and the bar above the composer always count the same.
+ */
+function seen(ctx: AnswerContext): AnswerContext {
+  const needs = new Set(attentionOf(ctx.tasks, ctx.pendingPermissionTaskIds).needsYou.map((t) => t.id));
+  if (needs.size === 0) return ctx;
+  return { ...ctx, tasks: ctx.tasks.map((t) => (needs.has(t.id) && t.status !== 'Needs you' ? { ...t, status: 'Needs you' as const } : t)) };
 }
 
 // ---- Reading the question ----
@@ -66,7 +80,8 @@ export function matchQuestion(question: string): Match | null {
 }
 
 /** Opsy's answer to `question`, built from `ctx`. */
-export function demoAnswer(question: string, ctx: AnswerContext): Widget {
+export function demoAnswer(question: string, input: AnswerContext): Widget {
+  const ctx = seen(input);
   const match = matchQuestion(question);
   if (!match) return text(UNKNOWN_QUESTION);
   if (match.kind === 'agent') return agentAnswer(match.name, ctx);

@@ -17,16 +17,21 @@ const GROUPS: { status: TaskStatus; label: string }[] = [
 
 /** Every agent task, grouped by status. Tasks you started come first. */
 export function AgentsSection({ mode }: { mode: SectionMode }) {
-  const { tasks, localTasks, people, syncFlag } = useWorkspace();
+  const { tasks, localTasks, people, syncFlag, attention } = useWorkspace();
   const { openTaskId, openTask } = useUi();
   const hit = useSearchHit();
 
+  const needsYou = new Set(attention.needsYou.map((t) => t.id));
   const groups = [
     { key: 'local', label: 'Started by you', items: localTasks as AnyTask[], counted: false },
     ...GROUPS.map((g) => ({
       key: g.status,
       label: g.label,
-      items: tasks.filter((t) => t.status === g.status).sort(byImportance) as AnyTask[],
+      // "Needs you" is the one shared definition (waiting tasks and pending permission requests), the same as the bar.
+      items: (g.status === 'Needs you'
+        ? tasks.filter((t) => needsYou.has(t.id))
+        : tasks.filter((t) => t.status === g.status && !needsYou.has(t.id))
+      ).sort(byImportance) as AnyTask[],
       counted: true,
     })),
   ];

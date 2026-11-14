@@ -9,23 +9,19 @@ import { listItem } from '../../styles/motion';
 import { useNow } from '../../lib/useNow';
 import { StatusDot } from '../common/StatusDot';
 
-/** The summary line: "2 need you now · 3 can wait". Opens and closes the list. */
+/** The summary line: "2 need you · 1 failed". Opens and closes the list. */
 export function TrayBar() {
-  const { decisionTasks, attentionTasks, localTasks, source } = useWorkspace();
-  const { trayLevel, trayOpen, setTrayOpen } = useUi();
+  const { attention, localTasks, source } = useWorkspace();
+  const { trayOpen, setTrayOpen } = useUi();
   const clock = useNow(10_000);
-  const all = decisionTasks();
-  const now = attentionTasks(trayLevel);
-  const later = all.length - now.length;
+  const needs = attention.needsYou.length;
+  const failed = attention.failed.length;
   const yoursRunning = localTasks.some((t) => t.status !== 'Done' && t.status !== 'Needs you');
 
   const parts = [
-    now.length ? (
-      <><b className="op-n">{now.length}</b> {now.length === 1 ? 'needs you now' : 'need you now'}</>
-    ) : (
-      <>{noDecisionsText(source, clock.getTime())}</>
-    ),
-    later > 0 && <><b className="op-n">{later}</b> can wait</>,
+    needs > 0 && <><b className="op-n">{needs}</b> {needs === 1 ? 'needs you' : 'need you'}</>,
+    failed > 0 && <><b className="op-n op-n-fail">{failed}</b> failed</>,
+    needs === 0 && failed === 0 && <>{noDecisionsText(source, clock.getTime())}</>,
     yoursRunning && <>yours just started</>,
   ].filter(Boolean);
 
@@ -51,13 +47,13 @@ export function TrayBar() {
   );
 }
 
-/** Only decisions that matter right now: "Needs you", and tools that disagree. */
+/** What needs you, then what failed: the same tasks the bar above counts. */
 export function TrayList() {
-  const { attentionTasks, people, source } = useWorkspace();
+  const { attention, people, source } = useWorkspace();
   const ui = useUi();
   const t = ui.motion;
   const now = useNow(10_000); // also for "last updated … ago" when offline
-  const tasks = attentionTasks(ui.trayLevel);
+  const tasks = [...attention.needsYou, ...attention.failed];
 
   // Each time the tray opens, the rows drop in again.
   const [opened, setOpened] = useState(0);
@@ -68,9 +64,8 @@ export function TrayList() {
       <div className="op-tray-clip">
         <div className="op-panel">
           <div className="op-scroll">
-            <ul key={opened} className="op-list" aria-label="Needs you now">
+            <ul key={opened} className="op-list" aria-label="Needs you and failed">
               {tasks.map((task, i) => {
-                const conflict = task.status !== 'Needs you'; // here only because its tools disagree
                 const owner = isLocal(task) ? 'You' : people[task.owner]?.name;
                 const note = task.impact || task.detail; // the agent's note: text for a person
                 const rest = [owner, waitingFor(task, now.getTime())].filter(Boolean).join(' · ');
@@ -85,7 +80,7 @@ export function TrayList() {
                       <span className="op-c1"><StatusDot status={task.status} /></span>
                       <span className="op-c2"><span className="op-title">{task.task}</span></span>
                       <span className="op-c3">{task.tool && <span className="op-tag">{task.tool}</span>}</span>
-                      <span className={`op-c4${conflict ? ' op-flag' : ''}`}>{conflict ? 'Out of sync' : task.status}</span>
+                      <span className="op-c4">{task.status}</span>
                       <span className="op-sub">
                         {task.priority && (
                           <Fragment>

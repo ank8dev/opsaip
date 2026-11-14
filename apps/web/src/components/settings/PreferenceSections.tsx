@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { TrayLevel } from '../../data/selectors';
 import { useUi, type MotionChoice, type ThemeChoice } from '../../state/ui';
 import { Picker, opts } from '../common/Picker';
 import { Card, LocalPicker, PreviewButton, SettingRow, SettingsSection, usePreview } from './parts';
@@ -13,7 +12,6 @@ const EVENTS: [string, string, boolean, boolean][] = [
 ];
 
 export function NotificationSettings() {
-  const { trayLevel, setTrayLevel } = useUi();
   return (
     <SettingsSection id="set-notify" title="Notifications" lead="What reaches you, and where.">
       <Card>
@@ -35,14 +33,6 @@ export function NotificationSettings() {
         </div>
       </Card>
       <Card>
-        <SettingRow title="Under the composer" description="Only decisions at this level show up next to the input. Everything else stays in the sidebar.">
-          <Picker
-            ariaLabel="Show under the composer"
-            value={trayLevel}
-            onChange={(v) => setTrayLevel(v as TrayLevel)}
-            options={opts([['urgent', 'Urgent only'], ['high', 'Urgent and High'], ['all', 'Everything that needs me']])}
-          />
-        </SettingRow>
         <SettingRow title="Quiet hours" description="During quiet hours only Needs you and Failed reach Slack; the rest waits in Opsaip.">
           <LocalPicker ariaLabel="Quiet hours" options={opts([['work', 'Outside my work hours'], ['never', 'Never']])} defaultValue="work" />
         </SettingRow>
