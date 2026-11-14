@@ -95,6 +95,7 @@ div.op-person:hover { background: transparent; }
 .op-more-in { padding: 4px 8px 12px 44px; display: flex; flex-direction: column; gap: 4px; }
 
 /* MCP */
+.op-sv-empty { margin: 4px 0 0; padding: 0 8px; font-size: 13px; line-height: 20px; color: var(--op-text-muted); }
 .op-mcp-note { margin: 4px 0 0; padding: 0 8px; font-size: 12px; line-height: 16px; color: var(--op-text-muted); }
 .op-mcp-bad { color: var(--op-error); }
 
@@ -121,11 +122,11 @@ div.op-person:hover { background: transparent; }
 .op-axis-in span:first-child { transform: none; }
 .op-axis-in span:last-child { transform: translateX(-100%); }
 
-/* Profile */
+/* Settings button */
 .op-side-foot { padding-top: 8px; border-top: 1px solid var(--op-border); }
 .op-me {
   width: 100%; margin: 0; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer;
-  display: grid; grid-template-columns: 24px minmax(0, 1fr) 12px; column-gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 10px; align-items: center;
   transition: background-color var(--op-dur-fast) var(--op-ease-out);
 }
 .op-me:hover, .op-me[aria-expanded="true"] { background: var(--op-hover); }

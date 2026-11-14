@@ -8,12 +8,13 @@ import { TITLE_MAX, type ChatInfo } from '../../data/chats/chats';
 /**
  * "New chat" and the list of your chats, under Chat in the sidebar. A chat can
  * be renamed (pencil) and deleted (cross, with a confirmation in place). The
- * list is the server's: it is not shown in Demo.
+ * list is the server's: it is not shown in Demo. With a `query` (search) it
+ * lists only the chats whose name matches.
  *
  * Motion: rows enter with `listItem` from styles/motion.ts, like every list in
  * the sidebar; no new values; reduced motion comes from the tokens.
  */
-export function ChatList() {
+export function ChatList({ query = '' }: { query?: string }) {
   const chats = useChats();
   const ui = useUi();
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -22,16 +23,23 @@ export function ChatList() {
 
   if (!chats.enabled) return null;
 
+  // Searching: only the chats whose name matches, with no New chat button.
+  const q = query.trim().toLowerCase();
+  const shown = q ? chats.chats.filter((c) => c.title.toLowerCase().includes(q)) : chats.chats;
+  if (q && shown.length === 0) return null;
+
   const leave = () => { ui.setSettingsOpen(false); ui.closeTask(); };
 
   return (
     <div className="op-chats" role="group" aria-label="Chats">
-      <button type="button" className="op-newchat" onClick={() => { leave(); chats.newChat(); }}>
-        <span className="op-newchat-plus" aria-hidden="true">+</span> New chat
-      </button>
+      {!q && (
+        <button type="button" className="op-newchat" onClick={() => { leave(); chats.newChat(); }}>
+          <span className="op-newchat-plus" aria-hidden="true">+</span> New chat
+        </button>
+      )}
       {chats.error !== '' && <p className="op-chats-note" role="alert">{chats.error}</p>}
       <ul className="op-chat-rows">
-        {chats.chats.map((c, i) => (
+        {shown.map((c, i) => (
           <motion.li key={c.id} className="op-chat-row" {...listItem(ui.motion, Math.min(i, 8))}>
             {renaming === c.id ? (
               <RenameForm

@@ -16,6 +16,7 @@ import { Face } from '../common/Face';
 import { Picker, type PickerOption } from '../common/Picker';
 import { ModeMenu, type ComposeMode } from './ModeMenu';
 import { QuickActions } from './QuickActions';
+import { feature } from '../../features';
 import { useTypingPlaceholder } from './useTypingPlaceholder';
 
 const VERB: Record<ComposeMode, string> = { ask: 'Ask', task: 'Create', message: 'Send', agent: 'Run', announce: 'Announce' };
@@ -69,7 +70,7 @@ export function Composer({ task, chat }: ComposerProps) {
   // Closing it brings back the mode you had before.
   const modeBefore = useRef<ComposeMode | null>(null);
   useEffect(() => {
-    if (task && !isLocal(task) && people[task.owner]) {
+    if (feature('message') && task && !isLocal(task) && people[task.owner]) {
       if (modeBefore.current === null) modeBefore.current = mode;
       setMode('message');
       setPersonId(task.owner);
@@ -322,7 +323,7 @@ export function Composer({ task, chat }: ComposerProps) {
                 <button type="button" className="op-plus" aria-label="Attach files" title="Attach files" onClick={() => fileInput.current?.click()}>+</button>
               </>
             )}
-            {task && <QuickActions task={task} prefill={prefill} />}
+            {task && feature('quickActions') && <QuickActions task={task} prefill={prefill} />}
             <span className="op-note" data-flash={ui.hint.flash} title={ui.hint.text} aria-live="polite">{ui.hint.text}</span>
             <button type="button" className="op-btn" disabled={!text.trim() || !canSend || files.uploading || (readOnly && askBusy)} onClick={submit}>
               {following ? 'Send' : VERB[mode]}

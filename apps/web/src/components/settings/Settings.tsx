@@ -8,10 +8,13 @@ import { RepositorySettings, SlackSettings, SyncSettings } from './SyncSections'
 import { AppearanceSettings, DataSettings, NotificationSettings } from './PreferenceSections';
 import { ServerSettings } from './ServerSection';
 import { AboutSettings } from './AboutSection';
+import { feature } from '../../features';
 import './Settings.css';
 
-const INDEX: [string, string][] = [
-  ['set-server', 'Server'],
+// In v0.1 Settings has Server, Appearance and About. The rest only preview
+// (they keep their own state and save nothing), so they are behind the
+// `previewSettings` flag (src/features.ts).
+const PREVIEW_BEFORE: [string, string][] = [
   ['set-profile', 'Profile'],
   ['set-workspace', 'Workspace'],
   ['set-agents', 'Agents'],
@@ -21,23 +24,33 @@ const INDEX: [string, string][] = [
   ['set-repo', 'Repository'],
   ['set-slack', 'Slack'],
   ['set-notify', 'Notifications'],
-  ['set-look', 'Appearance'],
-  ['set-data', 'Data & privacy'],
-  ['set-about', 'About'],
 ];
+
+/** The Settings index, in page order, for the flags as they are now. */
+export function settingsIndex(): [string, string][] {
+  const preview = feature('previewSettings');
+  return [
+    ['set-server', 'Server'],
+    ...(preview ? PREVIEW_BEFORE : []),
+    ['set-look', 'Appearance'],
+    ...(preview ? [['set-data', 'Data & privacy'] as [string, string]] : []),
+    ['set-about', 'About'],
+  ];
+}
 
 const NOTE = 'Preview — changes apply on this page only and aren’t saved yet.';
 
 /**
- * Settings. Stays mounted while closed (just hidden), so preview choices
- * survive closing and reopening, like they did in the prototype.
+ * Settings. Stays mounted while closed (just hidden).
  */
 export function Settings() {
   const ui = useUi();
   const t = ui.motion;
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const titleRef = useRef<HTMLHeadingElement>(null);
-  const [current, setCurrent] = useState(INDEX[0][0]);
+  const previews = feature('previewSettings');
+  const index = settingsIndex();
+  const [current, setCurrent] = useState('set-server');
   const [note, setNote] = useState({ text: NOTE, flash: false });
   const noteTimer = useRef(0);
 
@@ -94,10 +107,10 @@ export function Settings() {
           </button>
           <h1 className="op-set-title" id="set-title" ref={titleRef} tabIndex={-1}>Settings</h1>
         </div>
-        <p className="op-set-note" data-flash={note.flash} aria-live="polite">{note.text}</p>
+        {previews && <p className="op-set-note" data-flash={note.flash} aria-live="polite">{note.text}</p>}
         <div className="op-set-layout">
           <nav className="op-set-index" aria-label="Settings sections">
-            {INDEX.map(([id, label]) => (
+            {index.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -114,17 +127,21 @@ export function Settings() {
           </nav>
           <div className="op-set-body">
             <ServerSettings />
-            <ProfileSettings />
-            <WorkspaceSettings />
-            <AgentSettings />
-            <ApprovalSettings />
-            <ToolServerSettings />
-            <SyncSettings />
-            <RepositorySettings />
-            <SlackSettings />
-            <NotificationSettings />
+            {previews && (
+              <>
+                <ProfileSettings />
+                <WorkspaceSettings />
+                <AgentSettings />
+                <ApprovalSettings />
+                <ToolServerSettings />
+                <SyncSettings />
+                <RepositorySettings />
+                <SlackSettings />
+                <NotificationSettings />
+              </>
+            )}
             <AppearanceSettings />
-            <DataSettings />
+            {previews && <DataSettings />}
             <AboutSettings />
           </div>
         </div>
