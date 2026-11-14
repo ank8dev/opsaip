@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  startRunExact,
   RUN_PROMPT_MAX, RUN_TITLE_MAX, answerPermission, cancelRun, conductorOffNote, conductorStateFrom, fetchConductorStatus, fetchRun,
   isRunActive, parseConductorStatus, parseRunResponse, promptProblem, runTitleFrom, sendFollowUp, startRun,
 } from './conductor';
@@ -288,5 +289,26 @@ describe('the token', () => {
     await answerPermission('SECRET-TOKEN', 'r', 'p', true, signal, impl);
     expect(calls[0].url).not.toContain('SECRET-TOKEN');
     expect(calls[0].init.body as string).not.toContain('SECRET-TOKEN');
+  });
+});
+
+describe('startRunExact and the conductor status extras', () => {
+  it('sends exactly the title and prompt it was given, spaces and blank lines included', async () => {
+    const { impl, calls } = fakeFetch(json(201, { run: { id: 'r', taskId: 't', status: 'running', branch: 'b' } }));
+    const r = await startRunExact('tok', { title: '  Odd  title ', prompt: '  a\n\n b  ' }, signal, impl);
+    expect(r.ok).toBe(true);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ title: '  Odd  title ', prompt: '  a\n\n b  ' });
+  });
+
+  it('does not send a title or prompt the server would refuse', async () => {
+    const { impl, calls } = fakeFetch(json(201, {}));
+    expect(await startRunExact('t', { title: ' ', prompt: 'x' }, signal, impl)).toMatchObject({ ok: false, problem: 'bad-request' });
+    expect(await startRunExact('t', { title: 'x', prompt: '' }, signal, impl)).toMatchObject({ ok: false, problem: 'bad-request' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('reads repo and active from GET /v1/conductor, and works without them', () => {
+    expect(parseConductorStatus({ enabled: true, repo: 'play', active: true })).toEqual({ enabled: true, repo: 'play', active: true });
+    expect(parseConductorStatus({ enabled: true })).toEqual({ enabled: true });
   });
 });

@@ -81,6 +81,17 @@
 .op-w-outcome { font-size: 13px; line-height: 20px; color: var(--op-text-secondary); }
 .op-w-outcome:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 4px; }
 
+/* Proposed action: agent, repo and the exact prompt, then Approve or Cancel */
+.op-w-action { margin-top: 6px; }
+.op-w-act-facts > div { grid-template-columns: 56px minmax(0, 1fr); }
+.op-w-code {
+  margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto; border-radius: 10px; background: var(--op-hover);
+  font-family: var(--op-mono, 'DM Mono', monospace); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--op-text);
+}
+.op-w-action[data-status="cancelled"] .op-w-code, .op-w-action[data-status="failed"] .op-w-code { color: var(--op-text-secondary); }
+.op-w-action .op-w-outcome a { color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; }
+
 /* Conductor run card and permission request */
 .op-w-run { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--op-surface); border: 1px solid var(--op-border); }
 .op-w-run .op-w-label { margin-top: 0; }

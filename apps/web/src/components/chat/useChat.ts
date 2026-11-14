@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { askProblemReply, askReply } from '../../data/chat/ask';
+import { askProblemReply, askReply, type AskAction } from '../../data/chat/ask';
 import { createTaskReply } from '../../data/chat/tasks';
 import { liveChipAnswer } from '../../data/chat/liveAnswers';
+import { actionCard, approvedPayload, beginApprove, cancelAction } from '../../data/chat/actions';
 import { decideProposal, demoAnswer } from '../../data/chat/demoAnswers';
 import type { ThreadMessage } from '../../data/chat/types';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
-import type { Widget } from '../../data/chat/types';
+import type { ActionWidget, Widget } from '../../data/chat/types';
 import { useRequests } from './useRequests';
 import { useRun } from './useRun';
 
@@ -71,6 +72,21 @@ export function useChat() {
   // Leaving the page stops a question that is still on its way.
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
 
+  /**
+   * The model proposed an action: turn the waiting message into a Proposed action
+   * card. For a run, Agent mode is checked first, so the card can say it is off
+   * or busy instead of offering Approve. Nothing is sent to an agent here.
+   */
+  const proposeAction = useCallback(
+    async (messageId: number, answer: string, action: AskAction) => {
+      const conductor = action.type === 'run' ? await requests.request((signal) => api.conductor(signal), { quiet: true }) : null;
+      const card = actionCard(answer, action, conductor === undefined ? null : conductor, runs.runActiveNow());
+      setMessages((list) => list.map((m) => (m.id === messageId ? { id: messageId, from: 'opsy', widget: card } : m)));
+      setBusy(false);
+    },
+    [requests.request, api, runs.runActiveNow],
+  );
+
   const send = useCallback(
     (raw: string) => {
       const question = raw.trim();
@@ -112,18 +128,49 @@ export function useChat() {
         window.clearTimeout(timer);
         if (controller.current !== c) return; // left the page meanwhile
         controller.current = null;
+        if (!timedOut && result.ok && result.action !== null) {
+          void proposeAction(waitingId, result.answer, result.action);
+          return;
+        }
         const widget = timedOut ? askProblemReply('timeout') : askReply(result);
         setMessages((list) => list.map((m) => (m.id === waitingId ? { id: waitingId, from: 'opsy', widget } : m)));
         setBusy(false);
       });
     },
-    [busy, readOnly, allTasks, people, ask, ui, source.status, attention],
+    [busy, readOnly, allTasks, people, ask, ui, source.status, attention, proposeAction],
+  );
+
+  /** Approve or Cancel a Proposed action card. Only Approve sends anything, and only the card's own title and prompt. */
+  const decideAction = useCallback(
+    async (messageId: number, card: ActionWidget, decision: 'approve' | 'cancel') => {
+      const setCard = (next: ActionWidget) => patch(messageId, (w) => (w.kind === 'action' ? next : w));
+      if (decision === 'cancel') return setCard(cancelAction(card));
+      const going = beginApprove(card);
+      if (going === null) return; // already decided, or blocked
+      setCard(going);
+      const { title, prompt } = approvedPayload(card);
+      let ok: boolean;
+      if (card.action === 'run') {
+        ok = await runs.startRunExact(title, prompt);
+      } else {
+        const waiting = push({ kind: 'text', text: 'Creating the task…' }, true);
+        const result = await requests.request((signal) => api.createTask(title, signal));
+        ok = result !== undefined && result.ok;
+        if (result !== undefined) patch(waiting, () => createTaskReply(result));
+      }
+      setCard({ ...going, state: ok ? 'approved' : 'failed' });
+    },
+    [patch, push, runs.startRunExact, requests.request, api],
   );
 
   /** Approve or Cancel a proposed change. Only Approve touches the task, and only through changeTask. */
   const decide = useCallback(
     (messageId: number, decision: 'approve' | 'cancel') => {
       const message = messages.find((m) => m.id === messageId);
+      if (message?.from === 'opsy' && message.widget.kind === 'action') {
+        void decideAction(messageId, message.widget, decision);
+        return;
+      }
       if (!message || message.from !== 'opsy' || message.widget.kind !== 'proposal') return;
       const proposal = message.widget;
       const result = decideProposal(proposal, findTask(proposal.taskId), decision);
@@ -136,7 +183,7 @@ export function useChat() {
         ),
       );
     },
-    [messages, findTask, readOnly, changeTask],
+    [messages, findTask, readOnly, changeTask, decideAction],
   );
 
   return {

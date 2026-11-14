@@ -191,6 +191,36 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     [ui, say, push, patch, request, api, applyRun],
   );
 
+  /**
+   * A Proposed action card was approved: start a run with exactly this title and
+   * prompt (nothing from your typing is involved). Resolves true if it started;
+   * on failure Opsy says why in a message and the card is marked failed.
+   */
+  const startRunExact = useCallback(
+    async (title: string, prompt: string): Promise<boolean> => {
+      if (track.current !== null) {
+        push(problemReply('busy'));
+        return false;
+      }
+      ui.closeTask();
+      const waiting = push({ kind: 'text', text: 'Starting Claude Code…' }, true);
+      const result = await request((signal) => api.startRunExact({ title, prompt }, signal));
+      if (result === undefined) return false;
+      if (!result.ok) {
+        patch(waiting, () => problemReply(result.problem, result.reason));
+        return false;
+      }
+      track.current = { id: result.value.id, title, msgId: waiting, perms: new Map() };
+      saveActiveRun({ id: result.value.id, title });
+      applyRun(result.value); // the "waiting" message becomes the run card
+      return true;
+    },
+    [ui, push, patch, request, api, applyRun],
+  );
+
+  /** Is a run being followed on this page? */
+  const runActiveNow = useCallback(() => track.current !== null, []);
+
   /** Agent mode while a run is active: your text goes to the agent. Resolves true if it was sent. */
   const followUp = useCallback(
     async (text: string): Promise<boolean> => {
@@ -246,7 +276,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     [patch, request, api, applyRun],
   );
 
-  return { conductor, checkConductor, refreshConductor, runActive: run !== null, startRun, followUp, stop, answerPermission };
+  return { conductor, checkConductor, refreshConductor, runActive: run !== null, runActiveNow, startRun, startRunExact, followUp, stop, answerPermission };
 }
 
 export type RunControls = ReturnType<typeof useRun>;
