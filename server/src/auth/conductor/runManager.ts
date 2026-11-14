@@ -11,6 +11,8 @@ import { MAX_NOTE_LENGTH, type AgentTaskStatus, type TaskStore } from '@opsaip/c
 import { createClaudeCliDriver, withoutOpsaipVars } from './claudeCliDriver';
 import type { AgentDriver, PermissionRequest, RunEvent } from './driver';
 import { truncate } from './toolSummary';
+import { promptWithAttachments, saveAttachments } from '../uploads/saveAttachments';
+import { infoOf, type AttachmentInfo, type UploadedFile } from '../uploads/uploadStore';
 
 /** How long a permission request waits for the person before Opsaip denies it and stops the run. */
 export const PERMISSION_TIMEOUT_MS = 30 * 60_000;
@@ -63,6 +65,8 @@ export interface TranscriptEntry {
   text: string;
   /** ISO time the entry was recorded. */
   at: string;
+  /** you: the files attached to this prompt or follow-up (display names only; the text above is what the person typed). */
+  attachments?: AttachmentInfo[];
 }
 
 export interface Transcript {
@@ -83,8 +87,12 @@ export type RunResult =
   | { ok: false; status: 404 | 409 | 500; error: string };
 
 export interface RunManager {
-  /** Start a run (title and prompt already checked by parseNewRun). */
-  start(input: { title: string; prompt: string }): Promise<RunResult>;
+  /**
+   * Start a run (title and prompt already checked by parseNewRun). Attached
+   * files are saved in the worktree and listed at the end of the prompt the
+   * agent gets (see auth/uploads/saveAttachments.ts).
+   */
+  start(input: { title: string; prompt: string; attachments?: readonly UploadedFile[] }): Promise<RunResult>;
   get(id: string): RunView | undefined;
   /** The run's conversation so far, or undefined for an unknown (or forgotten) run. */
   transcript(id: string): Transcript | undefined;
@@ -94,6 +102,8 @@ export interface RunManager {
   active(): boolean;
   answerPermission(id: string, permissionId: string, allow: boolean): RunResult;
   sendMessage(id: string, text: string): RunResult;
+  /** With files (possibly none): they are saved in the worktree first, so this is asynchronous. */
+  sendMessage(id: string, text: string, attachments: readonly UploadedFile[]): Promise<RunResult>;
   cancel(id: string): RunResult;
   /** Stop the active run, if any (server shutdown). Resolves once its process has exited. */
   stopActive(): Promise<void>;
@@ -199,10 +209,23 @@ export function createRunManager(options: RunManagerOptions): RunManager {
   };
 
   /** Add a transcript entry, cut to MAX_ENTRY_CHARS, then drop the oldest while over a limit. */
-  const record = (run: Run, role: TranscriptEntry['role'], kind: TranscriptEntry['kind'], text: string): void => {
+  const record = (
+    run: Run,
+    role: TranscriptEntry['role'],
+    kind: TranscriptEntry['kind'],
+    text: string,
+    attachments: readonly UploadedFile[] = [],
+  ): void => {
     const cut = truncate(text, MAX_ENTRY_CHARS);
     if (cut.length < text.length) run.transcriptTruncated = true;
-    run.transcript.push({ id: run.nextEntryId++, role, kind, text: cut, at: new Date(now()).toISOString() });
+    run.transcript.push({
+      id: run.nextEntryId++,
+      role,
+      kind,
+      text: cut,
+      at: new Date(now()).toISOString(),
+      ...(attachments.length === 0 ? {} : { attachments: attachments.map(infoOf) }),
+    });
     run.transcriptChars += cut.length;
     while (run.transcript.length > MAX_TRANSCRIPT_ENTRIES || run.transcriptChars > MAX_TRANSCRIPT_CHARS) {
       const dropped = run.transcript.shift();
@@ -322,7 +345,30 @@ export function createRunManager(options: RunManagerOptions): RunManager {
     }
   };
 
-  const start = async ({ title, prompt }: { title: string; prompt: string }): Promise<RunResult> => {
+  /**
+   * Save the files in the run's worktree. The agent's text is the person's
+   * text plus the list of saved paths; undefined if saving failed. Done here,
+   * before any driver sees the text, so every driver gets files the same way.
+   */
+  const withFiles = async (run: Run, text: string, files: readonly UploadedFile[]): Promise<string | undefined> => {
+    if (files.length === 0) return text;
+    try {
+      const saved = await saveAttachments(run.worktree, run.id, files, withoutOpsaipVars(process.env));
+      return promptWithAttachments(text, saved.paths);
+    } catch {
+      return undefined; // never says why: the error could name paths
+    }
+  };
+
+  const start = async ({
+    title,
+    prompt,
+    attachments = [],
+  }: {
+    title: string;
+    prompt: string;
+    attachments?: readonly UploadedFile[];
+  }): Promise<RunResult> => {
     const id = randomUUID();
     const taskId = randomUUID();
     const branch = `opsaip/run-${id}`;
@@ -361,12 +407,18 @@ export function createRunManager(options: RunManagerOptions): RunManager {
       processExited: false,
       exited: Promise.resolve(),
     };
-    record(run, 'you', 'prompt', prompt);
+    const agentPrompt = await withFiles(run, prompt, attachments);
+    if (agentPrompt === undefined) {
+      // The worktree stays, like after any run. The task was made queued: end it.
+      finish(run, 'failed', 'Could not save the attached files in the run\'s worktree');
+      return { ok: false, status: 500, error: 'could not save the attached files in the run\'s worktree' };
+    }
+    record(run, 'you', 'prompt', prompt, attachments);
     runs.set(id, run);
     forgetOldRuns(runs);
     active = run;
     log(`opsaip: conductor run ${id} started`);
-    await launch(run, prompt);
+    await launch(run, agentPrompt);
     return { ok: true, run: view(run) };
   };
 
@@ -394,7 +446,7 @@ export function createRunManager(options: RunManagerOptions): RunManager {
    * in core, so the run moves to a NEW task with the same title (the run's
    * taskId changes; the old task stays done).
    */
-  const resume = (run: Run, text: string): RunResult => {
+  const resume = (run: Run, text: string, agentText = text, attachments: readonly UploadedFile[] = []): RunResult => {
     const sessionId = run.sessionId;
     if (sessionId === undefined) {
       return { ok: false, status: 409, error: 'the run has ended and cannot be continued: Claude Code gave no session to resume' };
@@ -426,10 +478,10 @@ export function createRunManager(options: RunManagerOptions): RunManager {
     run.processExited = false;
     run.lastAgentText = undefined;
     run.driver = createDriver();
-    record(run, 'you', 'followup', text);
+    record(run, 'you', 'followup', text, attachments);
     active = run;
     log(`opsaip: conductor run ${run.id} resumed`);
-    void launch(run, text, sessionId);
+    void launch(run, agentText, sessionId);
     return { ok: true, run: view(run) };
   };
 
@@ -481,16 +533,24 @@ export function createRunManager(options: RunManagerOptions): RunManager {
       return { ok: true, run: view(run) };
     },
 
-    sendMessage(id, text) {
+    sendMessage: ((id: string, text: string, attachments?: readonly UploadedFile[]) => {
       const run = find(id);
-      if ('ok' in run) return run;
-      if (run.finished) return resume(run, text);
-      if (run.status === 'queued' || !run.driver.sendMessage(text)) {
-        return { ok: false, status: 409, error: 'the run is not active: follow-ups are accepted only while it runs' };
-      }
-      record(run, 'you', 'followup', text);
-      return { ok: true, run: view(run) };
-    },
+      if ('ok' in run) return attachments === undefined ? run : Promise.resolve(run);
+      const deliver = (agentText: string, files: readonly UploadedFile[]): RunResult => {
+        if (run.finished) return resume(run, text, agentText, files);
+        if (run.status === 'queued' || !run.driver.sendMessage(agentText)) {
+          return { ok: false, status: 409, error: 'the run is not active: follow-ups are accepted only while it runs' };
+        }
+        record(run, 'you', 'followup', text, files);
+        return { ok: true, run: view(run) };
+      };
+      if (attachments === undefined) return deliver(text, []);
+      return withFiles(run, text, attachments).then((agentText) =>
+        agentText === undefined
+          ? ({ ok: false, status: 500, error: 'could not save the attached files in the run\'s worktree' } as const)
+          : deliver(agentText, attachments),
+      );
+    }) as RunManager['sendMessage'],
 
     cancel(id) {
       const run = find(id);

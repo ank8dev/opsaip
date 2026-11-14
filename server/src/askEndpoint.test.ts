@@ -49,6 +49,8 @@ function fakeProvider(reply: (prompt: AskPrompt, signal: AbortSignal) => Promise
   const prompts: AskPrompt[] = [];
   const provider: AskProvider = {
     name: 'fake',
+    displayName: 'Fake',
+    capabilities: { maxTotalBytes: 1000, types: [{ id: 'image', label: 'Images', mimes: ['image/png'], extensions: ['png'], maxBytes: 600 }, { id: 'text', label: 'Text', mimes: ['text/plain'], extensions: ['txt'], maxBytes: 600 }] },
     model: 'fake-model',
     answer: (prompt, signal) => {
       prompts.push(prompt);

@@ -1,6 +1,7 @@
 // Request bodies of the Conductor endpoints. Never throw; reasons never echo
 // the input (it can be a prompt).
 import { parseNewTask } from '@opsaip/core';
+import { parseAttachmentIds } from '../uploads/uploadStore';
 
 /**
  * Longest prompt or follow-up, in UTF-16 code units (String.length). 12 000
@@ -16,9 +17,10 @@ export type Parsed<T> = { ok: true; value: T } | { ok: false; reason: string };
  * POST /v1/runs: { "title": "...", "prompt": "..." }.
  * title: the parseNewTask rules (1 to 200 characters, not only whitespace,
  * stored trimmed). prompt: 1 to MAX_PROMPT_CHARS characters, not only
- * whitespace, kept as sent. Other fields are ignored.
+ * whitespace, kept as sent. attachments (optional): upload ids, see
+ * parseAttachmentIds. Other fields are ignored.
  */
-export function parseNewRun(input: unknown): Parsed<{ title: string; prompt: string }> {
+export function parseNewRun(input: unknown): Parsed<{ title: string; prompt: string; attachments?: string[] }> {
   try {
     if (!isObject(input)) return fail('run must be an object');
     const { title, prompt } = input;
@@ -27,7 +29,12 @@ export function parseNewRun(input: unknown): Parsed<{ title: string; prompt: str
     if (!task.ok) return fail(task.reason);
     const problem = textProblem('prompt', prompt);
     if (problem !== undefined) return fail(problem);
-    return { ok: true, value: { title: task.task.title, prompt: prompt as string } };
+    const ids = parseAttachmentIds(input.attachments);
+    if (!ids.ok) return fail(ids.reason);
+    return {
+      ok: true,
+      value: { title: task.task.title, prompt: prompt as string, ...(ids.ids.length === 0 ? {} : { attachments: ids.ids }) },
+    };
   } catch {
     return fail('run could not be read');
   }
@@ -48,13 +55,15 @@ export function parsePermissionAnswer(input: unknown): Parsed<{ allow: boolean; 
   }
 }
 
-/** POST /v1/runs/:id/message: { "text": "..." }, the prompt rules. */
-export function parseFollowUp(input: unknown): Parsed<{ text: string }> {
+/** POST /v1/runs/:id/message: { "text": "...", "attachments"?: [...] }, the prompt rules. */
+export function parseFollowUp(input: unknown): Parsed<{ text: string; attachments?: string[] }> {
   try {
     if (!isObject(input)) return fail('message must be an object');
     const problem = textProblem('text', input.text);
     if (problem !== undefined) return fail(problem);
-    return { ok: true, value: { text: input.text as string } };
+    const ids = parseAttachmentIds(input.attachments);
+    if (!ids.ok) return fail(ids.reason);
+    return { ok: true, value: { text: input.text as string, ...(ids.ids.length === 0 ? {} : { attachments: ids.ids }) } };
   } catch {
     return fail('message could not be read');
   }
