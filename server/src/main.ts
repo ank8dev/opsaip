@@ -6,6 +6,7 @@ import { readServerVersion } from './about';
 import { createApp } from './app';
 import { createRunManager, type RunManager } from './auth/conductor/runManager';
 import { ConfigError, loadConfig, type Config } from './config';
+import { createChatStore } from './chatStore';
 import { openDatabase } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
 import { createUpdateCheck, updateCheckEnabled } from './updateCheck';
@@ -40,7 +41,7 @@ const updateCheck = createUpdateCheck({
   current: readServerVersion(),
   enabled: updateCheckEnabled(process.env),
 });
-const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor, updateCheck });
+const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor, chats: createChatStore(db), updateCheck });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
