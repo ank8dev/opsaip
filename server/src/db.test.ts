@@ -17,6 +17,8 @@ afterEach(() => {
 const userVersion = (db: DatabaseSync) =>
   (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
 
+const COLUMNS_V3 = ['seq', 'id', 'status', 'updated_at', 'title', 'agent', 'note', 'source'];
+
 const columnsOf = (db: DatabaseSync) =>
   (db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]).map((c) => c.name);
 
@@ -52,10 +54,10 @@ describe('openDatabase', () => {
 
   it('creates an empty tasks table and sets the schema version', () => {
     const db = openDatabase(join(dir, 'opsaip.db'));
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(3);
     expect(userVersion(db)).toBe(SCHEMA_VERSION);
     expect(db.prepare('SELECT * FROM tasks').all()).toEqual([]);
-    expect(columnsOf(db)).toEqual(['seq', 'id', 'status', 'updated_at', 'title', 'agent', 'note']);
+    expect(columnsOf(db)).toEqual(COLUMNS_V3);
     db.close();
   });
 
@@ -115,12 +117,12 @@ describe('migration from version 1 to 2', () => {
     ['alpha', 'queued', '2026-11-01T10:00:00Z'],
   ];
 
-  it('adds the title, agent and note columns and sets version 2', () => {
+  it('adds the title, agent and note columns (and ends at the current version)', () => {
     const path = join(dir, 'opsaip.db');
     createVersion1Database(path, rows);
     const db = openDatabase(path);
-    expect(userVersion(db)).toBe(2);
-    expect(columnsOf(db)).toEqual(['seq', 'id', 'status', 'updated_at', 'title', 'agent', 'note']);
+    expect(userVersion(db)).toBe(SCHEMA_VERSION);
+    expect(columnsOf(db)).toEqual(COLUMNS_V3);
     db.close();
   });
 
@@ -129,8 +131,8 @@ describe('migration from version 1 to 2', () => {
     createVersion1Database(path, rows);
     const db = openDatabase(path);
     expect(db.prepare('SELECT * FROM tasks ORDER BY seq').all()).toEqual([
-      { seq: 1, id: 'zeta', status: 'waiting_on_human', updated_at: '2026-11-01T10:05:00Z', title: null, agent: null, note: null },
-      { seq: 2, id: 'alpha', status: 'queued', updated_at: '2026-11-01T10:00:00Z', title: null, agent: null, note: null },
+      { seq: 1, id: 'zeta', status: 'waiting_on_human', updated_at: '2026-11-01T10:05:00Z', title: null, agent: null, note: null, source: null },
+      { seq: 2, id: 'alpha', status: 'queued', updated_at: '2026-11-01T10:00:00Z', title: null, agent: null, note: null, source: null },
     ]);
     db.close();
   });
@@ -140,8 +142,8 @@ describe('migration from version 1 to 2', () => {
     createVersion1Database(path, rows);
     openDatabase(path).close();
     const again = openDatabase(path);
-    expect(userVersion(again)).toBe(2);
-    expect(columnsOf(again)).toHaveLength(7);
+    expect(userVersion(again)).toBe(SCHEMA_VERSION);
+    expect(columnsOf(again)).toHaveLength(COLUMNS_V3.length);
     again.close();
   });
 
@@ -188,5 +190,89 @@ describe('migration from version 1 to 2', () => {
     expect(columnsOf(check)).toEqual(['seq', 'id', 'status', 'updated_at', 'note']);
     expect(check.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
     check.close();
+  });
+});
+
+/**
+ * A database exactly as the version 2 server left it (SQL copied on purpose,
+ * like createVersion1Database: do not change it when the schema moves on).
+ */
+function createVersion2Database(path: string, rows: [string, string, string, string | null][]): void {
+  const v2 = new DatabaseSync(path);
+  v2.exec(`
+    BEGIN;
+    CREATE TABLE tasks (
+      seq        INTEGER PRIMARY KEY,
+      id         TEXT    NOT NULL UNIQUE,
+      status     TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL,
+      title      TEXT,
+      agent      TEXT,
+      note       TEXT
+    ) STRICT;
+    PRAGMA user_version = 2;
+    COMMIT;
+  `);
+  const insert = v2.prepare('INSERT INTO tasks (id, status, updated_at, title) VALUES (?, ?, ?, ?)');
+  for (const row of rows) insert.run(...row);
+  v2.close();
+}
+
+describe('migration from version 2 to 3', () => {
+  const rows: [string, string, string, string | null][] = [
+    ['zeta', 'running', '2026-11-01T10:05:00Z', 'Old task'],
+    ['alpha', 'queued', '2026-11-01T10:00:00Z', null],
+  ];
+
+  it('adds the source column and sets version 3', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion2Database(path, rows);
+    const db = openDatabase(path);
+    expect(SCHEMA_VERSION).toBe(3);
+    expect(userVersion(db)).toBe(3);
+    expect(columnsOf(db)).toEqual(COLUMNS_V3);
+    db.close();
+  });
+
+  it('keeps old rows and their order, with source NULL', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion2Database(path, rows);
+    const db = openDatabase(path);
+    expect(db.prepare('SELECT id, title, source FROM tasks ORDER BY seq').all()).toEqual([
+      { id: 'zeta', title: 'Old task', source: null },
+      { id: 'alpha', title: null, source: null },
+    ]);
+    db.close();
+  });
+
+  it('serves old tasks with no source, and the store can then create tasks from you', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion2Database(path, rows);
+    const db = openDatabase(path);
+    const store = createSqliteTaskStore(db);
+    expect(store.all()).toEqual([
+      { id: 'zeta', status: 'running', updatedAt: '2026-11-01T10:05:00Z', title: 'Old task' },
+      { id: 'alpha', status: 'queued', updatedAt: '2026-11-01T10:00:00Z' },
+    ]);
+    expect(
+      store.create({ id: 'new', title: 'Mine', createdAt: '2026-11-01T11:00:00Z', source: 'you' }).ok,
+    ).toBe(true);
+    expect(store.all().map((t) => [t.id, t.source])).toEqual([
+      ['zeta', undefined],
+      ['alpha', undefined],
+      ['new', 'you'],
+    ]);
+    db.close();
+  });
+
+  it('runs once: opening the migrated file again changes nothing', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion2Database(path, rows);
+    openDatabase(path).close();
+    const again = openDatabase(path);
+    expect(userVersion(again)).toBe(3);
+    expect(columnsOf(again)).toEqual(COLUMNS_V3);
+    expect(again.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
+    again.close();
   });
 });

@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { parseReport, type TaskStore } from '@opsaip/core';
+import { randomUUID } from 'node:crypto';
+import { parseNewTask, parseReport, type TaskStore } from '@opsaip/core';
 import { createAskService, NOT_CONFIGURED } from './ask';
 import { tokenProblem } from './auth/accessToken';
 import type { AskProvider } from './auth/askProvider';
@@ -32,6 +33,7 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void | Promise<voi
  *
  *   POST /v1/reports  JSON StatusReport -> 200 { task } | 400 | 409 | 413 | 415
  *   POST /v1/ask      { question } -> 200 { answer } | 400 | 413 | 415 | 429 | 502 | 503 | 504
+ *   POST /v1/tasks    { title, agent? } -> 201 { task } | 400 | 409 | 413 | 415
  *   GET  /v1/tasks    200 { tasks }
  *   GET  /healthz     200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
@@ -67,6 +69,26 @@ export function createApp({
     },
     '/v1/tasks': {
       GET: (_req, res) => sendJson(res, 200, { tasks: store.all() }),
+      // A person creates a task: queued, source "you", id and time from the
+      // server. Any other field in the body is ignored (see parseNewTask).
+      POST: async (req, res) => {
+        const body = await readJsonBody(req, res);
+        if (!body.ok) return;
+
+        const parsed = parseNewTask(body.input);
+        if (!parsed.ok) return sendJson(res, 400, { error: parsed.reason });
+
+        const result = store.create({
+          id: randomUUID(),
+          ...parsed.task,
+          createdAt: new Date().toISOString(),
+          source: 'you',
+        });
+        // Only an id collision can get here (a random UUID: practically never).
+        if (!result.ok) return sendJson(res, 409, { error: result.reason });
+
+        sendJson(res, 201, { task: result.task });
+      },
     },
     '/v1/reports': {
       POST: async (req, res) => {

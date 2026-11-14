@@ -163,6 +163,7 @@ JSON: `{ "error": "<reason>" }`.
 | Request             | Response                                                                                                                           |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
+| `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
@@ -179,13 +180,33 @@ A status report (the body of `POST /v1/reports`):
 | `agent`  | no       | String, 1–100 characters, e.g. `claude-code`. Replaces the task's agent.                   |
 | `note`   | no       | String, 1–500 characters, e.g. the question while `waiting_on_human`. Belongs to the new status: a report without a note clears it. |
 
-`GET /v1/tasks` returns `title`, `agent` and `note` only when they are set. Resending the exact
-same report (same `status` and `at`) changes nothing, even if its `note` differs.
+`GET /v1/tasks` returns `title`, `agent`, `note` and `source` only when they are set. Resending
+the exact same report (same `status` and `at`) changes nothing, even if its `note` differs.
+
+A task you create (the body of `POST /v1/tasks`):
+
+| Field   | Required | Rule                                                                                         |
+| ------- | -------- | -------------------------------------------------------------------------------------------- |
+| `title` | yes      | String, 1–200 characters, not only whitespace. Leading and trailing whitespace is trimmed.   |
+| `agent` | no       | String, 1–100 characters, e.g. `claude-code`. Who should work on it.                         |
+
+The server picks the rest: a random `id`, `status: "queued"`, `updatedAt` (now, UTC) and
+`source: "you"`. Any other field in the body is ignored. `source` is set only here: agents'
+reports can never set, change or clear it, and a task an agent creates has none.
 
 ```bash
 curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
   -d '{"taskId":"demo","status":"queued","at":"2026-11-10T16:00:00Z","title":"Try Opsaip"}' \
   http://127.0.0.1:4100/v1/reports
+```
+
+Create a task yourself:
+
+```bash
+curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json' \
+  -d '{"title":"Fix the login bug","agent":"claude-code"}' \
+  http://127.0.0.1:4100/v1/tasks
+# 201 {"task":{"id":"…","status":"queued","updatedAt":"…","title":"Fix the login bug","agent":"claude-code","source":"you"}}
 ```
 
 The database schema version is kept in SQLite's `user_version`. A database from an older

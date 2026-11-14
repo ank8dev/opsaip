@@ -109,6 +109,160 @@ describe('GET /v1/tasks', () => {
   });
 });
 
+function postTask(
+  body: RequestInit['body'],
+  headers: Record<string, string> = JSON_HEADERS,
+): Promise<Response> {
+  return fetch(`${base}/v1/tasks`, { method: 'POST', headers: { ...AUTH, ...headers }, body });
+}
+
+describe('POST /v1/tasks', () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('creates a queued task from you: 201 with the task', async () => {
+    await start();
+    const before = Date.now();
+    const res = await postTask(JSON.stringify({ title: '  Fix login ', agent: 'claude-code' }));
+    const after = Date.now();
+    expect(res.status).toBe(201);
+    expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
+    const { task } = (await res.json()) as { task: Record<string, string> };
+    expect(task).toEqual({
+      id: expect.stringMatching(UUID),
+      status: 'queued',
+      updatedAt: expect.any(String),
+      title: 'Fix login',
+      agent: 'claude-code',
+      source: 'you',
+    });
+    expect(task.updatedAt).toBe(new Date(task.updatedAt).toISOString());
+    expect(Date.parse(task.updatedAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(task.updatedAt)).toBeLessThanOrEqual(after);
+    expect(await tasks()).toEqual([task]);
+  });
+
+  it('works without an agent, and gives every task its own id', async () => {
+    await start();
+    const a = (await (await postTask('{"title":"a"}')).json()) as { task: { id: string } };
+    const b = (await (await postTask('{"title":"a"}')).json()) as { task: { id: string } };
+    expect(a.task.id).not.toBe(b.task.id);
+    expect(Object.hasOwn(a.task, 'agent')).toBe(false);
+  });
+
+  it('ignores id, status, updatedAt and source in the body', async () => {
+    await start();
+    const res = await postTask(
+      JSON.stringify({ title: 't', id: 'mine', status: 'done', updatedAt: T0, source: 'x' }),
+    );
+    expect(res.status).toBe(201);
+    const { task } = (await res.json()) as { task: Record<string, string> };
+    expect(task.id).toMatch(UUID);
+    expect(task).toMatchObject({ status: 'queued', source: 'you' });
+    expect(task.updatedAt).not.toBe(T0);
+  });
+
+  it('a task from you then follows agent reports and keeps its source', async () => {
+    await start();
+    const { task } = (await (await postTask('{"title":"t"}')).json()) as {
+      task: { id: string };
+    };
+    const later = new Date(Date.now() + 60_000).toISOString();
+    expect((await report(task.id, 'running', later)).status).toBe(200);
+    expect(await tasks()).toEqual([
+      expect.objectContaining({ id: task.id, status: 'running', source: 'you' }),
+    ]);
+  });
+
+  it('GET /v1/tasks leaves source out for tasks from agents', async () => {
+    await start();
+    await report('agent-made', 'queued', T0);
+    await postTask('{"title":"t"}');
+    const list = (await tasks()) as Record<string, unknown>[];
+    expect(Object.hasOwn(list[0], 'source')).toBe(false);
+    expect(list[1].source).toBe('you');
+  });
+
+  it('409 if the store rejects the task (id collision)', async () => {
+    const collide: TaskStore = {
+      ...createTaskStore(),
+      create: () => ({ ok: false, reason: 'task already exists' }),
+    };
+    await start({ store: collide });
+    const res = await postTask('{"title":"t"}');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'task already exists' });
+  });
+
+  it('401 without a token, and nothing is created', async () => {
+    await start();
+    const res = await fetch(`${base}/v1/tasks`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: '{"title":"t"}',
+    });
+    expect(res.status).toBe(401);
+    expect(await tasks()).toEqual([]);
+  });
+
+  it('401 with a wrong token', async () => {
+    await start();
+    const res = await postTask('{"title":"t"}', { ...JSON_HEADERS, authorization: 'Bearer nope' });
+    expect(res.status).toBe(401);
+  });
+
+  describe('400 on invalid input', () => {
+    it.each([
+      ['not JSON', 'nope', 'body must be valid JSON (UTF-8)'],
+      ['an array', '[]', 'task must be an object'],
+      ['null', 'null', 'task must be an object'],
+      ['no title', '{}', 'title is missing'],
+      ['an empty title', '{"title":""}', 'title must not be empty'],
+      ['a blank title', '{"title":"   "}', 'title must not be only whitespace'],
+      ['a numeric title', '{"title":5}', 'title must be a string'],
+      ['a title over 200 characters', JSON.stringify({ title: 'a'.repeat(201) }), 'title must be at most 200 characters'],
+      ['a null agent', '{"title":"t","agent":null}', 'agent must be a string'],
+      ['an empty agent', '{"title":"t","agent":""}', 'agent must not be empty'],
+      ['an agent over 100 characters', JSON.stringify({ title: 't', agent: 'a'.repeat(101) }), 'agent must be at most 100 characters'],
+    ])('%s', async (_name, body, error) => {
+      await start();
+      const res = await postTask(body);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error });
+      expect(await tasks()).toEqual([]);
+    });
+  });
+
+  it('415 unless the body is declared as JSON', async () => {
+    await start();
+    const res = await postTask('{"title":"t"}', { 'content-type': 'text/plain' });
+    expect(res.status).toBe(415);
+    expect(await res.json()).toEqual({ error: 'content-type must be application/json' });
+    expect(await tasks()).toEqual([]);
+  });
+
+  it('413 over the body size limit', async () => {
+    await start();
+    const res = await postTask(JSON.stringify({ title: 't', pad: 'x'.repeat(MAX_BODY_BYTES) }));
+    expect(res.status).toBe(413);
+    expect(await tasks()).toEqual([]);
+  });
+
+  it('500 with no details when the store throws', async () => {
+    const failing: TaskStore = {
+      ...createTaskStore(),
+      create() {
+        throw new Error('disk on fire');
+      },
+    };
+    const logError = vi.fn();
+    await start({ store: failing, logError });
+    const res = await postTask('{"title":"t"}');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'internal error' });
+    expect(logError).toHaveBeenCalledOnce();
+  });
+});
+
 describe('POST /v1/reports', () => {
   it('creates a task from a queued report: 200 with the task', async () => {
     await start();
@@ -331,7 +485,8 @@ describe('routing', () => {
 
   it.each([
     ['GET', '/v1/reports', 'POST'],
-    ['POST', '/v1/tasks', 'GET'],
+    ['DELETE', '/v1/tasks', 'GET, POST'],
+    ['PUT', '/v1/tasks', 'GET, POST'],
     ['DELETE', '/healthz', 'GET'],
   ])('405 for %s %s, with Allow: %s', async (method, path, allow) => {
     await start();

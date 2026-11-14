@@ -79,9 +79,9 @@ export function parseReport(input: unknown): ParseReportResult {
 /**
  * Why `value` is not an acceptable text field, or undefined if it is: a string,
  * not empty, at most `max` characters, not only whitespace. The value itself
- * is never trimmed: "  a " stays as sent.
+ * is never trimmed: "  a " stays as sent. Also used by parseNewTask.
  */
-function textProblem(name: string, value: unknown, max: number): string | undefined {
+export function textProblem(name: string, value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return `${name} must be a string`;
   if (value.length === 0) return `${name} must not be empty`;
   if (value.length > max) return `${name} must be at most ${max} characters`;
