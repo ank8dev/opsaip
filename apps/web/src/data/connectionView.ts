@@ -4,7 +4,7 @@
 import type { DataSource } from './poller';
 import type { FetchProblem } from './source';
 
-export type ConnectionLabel = 'Demo' | 'Connecting' | 'Live' | 'Offline';
+export type ConnectionLabel = 'Demo' | 'Not connected' | 'Connecting' | 'Live' | 'Offline';
 /** muted: nothing is wrong, nothing is live; live: the accent; error: red. */
 export type ConnectionTone = 'muted' | 'live' | 'error';
 
@@ -28,6 +28,8 @@ export function describeSource(source: DataSource, now: number): ConnectionView 
   switch (source.status) {
     case 'demo':
       return { label: 'Demo', tone: 'muted', detail: 'Sample data from a fictional team. Connect your server in Settings → Server.' };
+    case 'disconnected':
+      return { label: 'Not connected', tone: 'muted', detail: 'Paste your server’s access token to connect.' };
     case 'connecting':
       return { label: 'Connecting', tone: 'muted', detail: 'Connecting to the server…' };
     case 'live':
@@ -62,6 +64,8 @@ export function noDecisionsText(source: DataSource, now: number): string {
     case 'demo':
     case 'live':
       return 'Nothing needs you right now';
+    case 'disconnected':
+      return 'Not connected to a server';
     case 'connecting':
       return 'Connecting to the server…';
     case 'offline': {

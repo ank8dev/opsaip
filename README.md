@@ -2,7 +2,7 @@
 
 ## Status
 
-In development. The interface runs on a sample team (Tessera). The agent server has a first
+In development. The web app shows your server's tasks (sample data exists only for development). The agent server has a first
 HTTP API (v0, see [Run the server](#run-the-server)).
 
 **Opsaip is an open source, self-hosted conductor for developer teams and their AI agents.**
@@ -13,8 +13,8 @@ status to Opsaip; Opsaip keeps those statuses in sync across your tools, and the
 from one place: see what every agent is doing, answer the ones waiting for a person, start
 new work, and message teammates.
 
-> Status: early. The web app runs on sample data (a fictional team called Tessera).
-> Actions are previews — nothing is saved or sent yet.
+> Status: early. The web app needs a running server: without one it shows a Connect screen.
+> Some screens are still previews — nothing is saved or sent there.
 
 ## Repository layout
 
@@ -95,8 +95,8 @@ for the whole Mac.
 The app is ad-hoc signed (Apple Silicon runs nothing unsigned) but not notarized, so macOS cannot
 tell who made it.
 
-To use it with your Opsaip server, add `config.json` as described below, then click **Demo** in the
-top-right corner, paste the access token under **Server** and press **Connect**. As in a browser
+To use it with your Opsaip server, add `config.json` as described below, then paste the access
+token on the Connect screen and press **Connect**. As in a browser
 tab, the token is kept only while the window is open.
 
 ## Run the desktop app (development)
@@ -450,7 +450,10 @@ says what went wrong.
 
 `apps/web/src/data/source.ts` is the single place data comes from:
 
-- **Demo** — no server connection saved: the sample team in `apps/web/src/mocks/`.
+- **Connect screen** — no server connection saved: the app asks for the access token (the server
+  address is the page's own origin) and links here. A production build has **no sample data**.
+- **Demo** — only in `npm run dev` and in tests (`import.meta.env.DEV`): the sample team in
+  `apps/web/src/mocks/`. A test builds the app and checks the sample team is not in the bundle.
 - **Server** — an access token saved in this browser tab: the app polls `GET /v1/tasks` every 5 s
   and shows only those tasks. Team, MCP and Repo are empty until the server has them. In the chat's
   composer, **Ask** asks Opsy about them, **Task** creates one (`POST /v1/tasks`, shown as yours:
@@ -471,8 +474,9 @@ To see your server's tasks in the web app:
 1. `npm run build`, then start the server (see [Run the server](#run-the-server)). It serves the
    app at `http://127.0.0.1:4100/`. While working on the app, use `npm run dev` instead: it forwards
    `/v1` to the server (add `OPSAIP_URL=...` if the server is not on `127.0.0.1:4100`).
-2. Open the app, click **Demo** in the top-right corner, paste the token under **Server** and press
-   **Connect**. The badge shows **Live**, **Connecting** or **Offline**; **Disconnect** goes back to Demo.
+2. Open the app, paste the token on the Connect screen and press **Connect**. The badge shows
+   **Live**, **Connecting** or **Offline**; **Disconnect** (Settings → Server) goes back to the
+   Connect screen.
 
 ## License
 

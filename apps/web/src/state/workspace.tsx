@@ -11,7 +11,7 @@ import { isLocal } from '../types';
 import { byImportance, byStatus, mapState, peopleById } from '../data/selectors';
 import { attentionOf, type AttentionView } from '../data/attention';
 import {
-  clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
+  clearConnection, DEMO_ENABLED, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
 import { askQuestion, type AskResult } from '../data/chat/ask';
 import { makeServerApi, type ServerApi } from '../data/chat/serverApi';
@@ -26,7 +26,7 @@ interface WorkspaceValue {
   readOnly: boolean;
   /** Save the token and start polling. Returns a problem to show, or undefined. */
   connect: (token: string) => string | undefined;
-  /** Forget the token and go back to Demo. */
+  /** Forget the token and go back to the Connect screen (Demo in dev). */
   disconnect: () => void;
   /** Ask the server a question (Live only). The token stays in here. Never throws. */
   ask: (question: string, signal: AbortSignal) => Promise<AskResult>;
@@ -89,7 +89,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [connection]);
 
-  const source: DataSource = connection === null ? { status: 'demo' } : (live ?? { status: 'connecting' });
+  const source: DataSource = connection === null
+    ? (DEMO_ENABLED ? { status: 'demo' } : { status: 'disconnected' })
+    : (live ?? { status: 'connecting' });
   const readOnly = source.status !== 'demo';
   const serverTasks = source.status === 'live' || source.status === 'offline' ? source.tasks : null;
   const ws = useMemo(

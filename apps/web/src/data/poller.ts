@@ -23,8 +23,11 @@ export type LiveState =
   /** The last request failed. `tasks` and `at` are from the last success, if any. */
   | { status: 'offline'; problem: FetchProblem; tasks: Task[]; skipped: number; at: number | null };
 
-/** Where the data on screen comes from: Demo, or the server (connecting, live, offline). */
-export type DataSource = { status: 'demo' } | LiveState;
+/**
+ * Where the data on screen comes from: Demo (dev and tests only), no server yet
+ * (the Connect screen), or the server (connecting, live, offline).
+ */
+export type DataSource = { status: 'demo' } | { status: 'disconnected' } | LiveState;
 
 export interface PollerOptions {
   fetchTasks: (signal: AbortSignal) => Promise<FetchTasksResult>;
