@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { askProblemReply, askReply } from '../../data/chat/ask';
 import { createTaskReply } from '../../data/chat/tasks';
+import { liveChipAnswer } from '../../data/chat/liveAnswers';
 import { decideProposal, demoAnswer } from '../../data/chat/demoAnswers';
 import type { ThreadMessage } from '../../data/chat/types';
 import { useWorkspace } from '../../state/workspace';
@@ -18,7 +19,7 @@ const ASK_TIMEOUT_MS = 30_000;
  * the server's Ask, and the answer replaces a "waiting" message.
  */
 export function useChat() {
-  const { allTasks, people, readOnly, source, ask, api, changeTask, findTask, setPendingPermissionTasks } = useWorkspace();
+  const { allTasks, people, readOnly, source, ask, api, changeTask, findTask, setPendingPermissionTasks, attention } = useWorkspace();
   const ui = useUi();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -83,6 +84,20 @@ export function useChat() {
         return;
       }
 
+      // The three suggestions are answered here, from the server's tasks, without Ask.
+      const chip = liveChipAnswer(question, {
+        tasks: allTasks, people, pendingPermissionTaskIds: attention.needsYou.map((t) => t.id),
+      });
+      if (chip !== null) {
+        // Old or missing data must not pass as a statement about the team.
+        const widget: Widget =
+          source.status === 'offline' ? askProblemReply('unreachable')
+          : source.status === 'connecting' ? { kind: 'text', text: 'Still connecting to the server. Try again in a moment.' }
+          : chip;
+        setMessages((list) => [...list, you, { id: nextId.current++, from: 'opsy', widget }]);
+        return;
+      }
+
       const waitingId = nextId.current++;
       setMessages((list) => [
         ...list, you,
@@ -102,7 +117,7 @@ export function useChat() {
         setBusy(false);
       });
     },
-    [busy, readOnly, allTasks, people, ask, ui],
+    [busy, readOnly, allTasks, people, ask, ui, source.status, attention],
   );
 
   /** Approve or Cancel a proposed change. Only Approve touches the task, and only through changeTask. */
