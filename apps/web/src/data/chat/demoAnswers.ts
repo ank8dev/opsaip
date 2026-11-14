@@ -35,14 +35,21 @@ export const CHIPS: readonly Chip[] = [
   { id: 'rename', label: 'Rename a task', ask: false },
 ];
 
-/** The chips for Live mode: only the questions. */
-export const LIVE_CHIPS: readonly Chip[] = CHIPS.filter((c) => c.ask);
+/**
+ * The chips for Live mode: the three questions answered from the server's
+ * tasks without an AI model (see liveAnswers.ts). Anything else typed in Live
+ * is a free question for Ask.
+ */
+export const LIVE_CHIP_IDS: readonly ChipId[] = ['brief', 'needs', 'open'];
+export const LIVE_CHIPS: readonly Chip[] = CHIPS.filter((c) => (LIVE_CHIP_IDS as readonly string[]).includes(c.id));
 
 export const UNKNOWN_QUESTION = 'In the demo I only understand the suggestions below.';
 
 export interface AnswerContext {
   tasks: readonly Task[];
   people: Readonly<Record<string, Person>>;
+  /** Where the answer comes from, shown under it. Defaults to DEMO_SOURCE. */
+  source?: string;
   /** Tasks with a permission request nobody has answered: they need you, whatever their status says. */
   pendingPermissionTaskIds?: readonly string[];
 }
@@ -98,8 +105,8 @@ export function demoAnswer(question: string, input: AnswerContext): Widget {
 
 const STATUS_ORDER: readonly TaskStatus[] = ['Needs you', 'Working', 'Failed', 'Queued', 'Done'];
 
-function text(message: string): TextWidget {
-  return { kind: 'text', text: message, source: DEMO_SOURCE };
+function text(message: string, ctx?: AnswerContext): TextWidget {
+  return { kind: 'text', text: message, source: ctx?.source ?? DEMO_SOURCE };
 }
 
 /** Most important first: priority, then who has waited longest, then id so ties never depend on input order. */
@@ -121,7 +128,7 @@ function countByStatus(tasks: readonly Task[]): { status: TaskStatus; count: num
 }
 
 function briefAnswer(ctx: AnswerContext): Widget {
-  if (!ctx.tasks.length) return text('I do not see any tasks yet.');
+  if (!ctx.tasks.length) return text('I do not see any tasks yet.', ctx);
   const needs = ctx.tasks.filter((t) => t.status === 'Needs you').sort(byImportanceThenId);
   const failed = ctx.tasks.filter((t) => t.status === 'Failed').sort(byImportanceThenId);
   const first = needs[0] ?? failed[0];
@@ -130,33 +137,33 @@ function briefAnswer(ctx: AnswerContext): Widget {
     total: ctx.tasks.length,
     counts: countByStatus(ctx.tasks),
     next: first ? line(first, ctx) : null,
-    source: DEMO_SOURCE,
+    source: ctx.source ?? DEMO_SOURCE,
   };
   return widget;
 }
 
 function needsAnswer(ctx: AnswerContext): Widget {
   const needs = ctx.tasks.filter((t) => t.status === 'Needs you').sort(byImportanceThenId);
-  if (!needs.length) return text('Nothing needs you right now.');
+  if (!needs.length) return text('Nothing needs you right now.', ctx);
   const widget: NeedsWidget = {
     kind: 'needs',
     tasks: needs.slice(0, MAX_ROWS).map((t) => line(t, ctx)),
     more: Math.max(0, needs.length - MAX_ROWS),
-    source: DEMO_SOURCE,
+    source: ctx.source ?? DEMO_SOURCE,
   };
   return widget;
 }
 
 function notDoneAnswer(ctx: AnswerContext): Widget {
-  if (!ctx.tasks.length) return text('I do not see any tasks yet.');
+  if (!ctx.tasks.length) return text('I do not see any tasks yet.', ctx);
   const open = ctx.tasks.filter((t) => t.status !== 'Done').sort(byStatusThenImportance);
-  if (!open.length) return text('Everything is done.');
+  if (!open.length) return text('Everything is done.', ctx);
   const widget: TaskListWidget = {
     kind: 'tasks',
     title: `${open.length} ${open.length === 1 ? 'task is' : 'tasks are'} not done`,
     tasks: open.slice(0, MAX_ROWS).map((t) => line(t, ctx)),
     more: Math.max(0, open.length - MAX_ROWS),
-    source: DEMO_SOURCE,
+    source: ctx.source ?? DEMO_SOURCE,
   };
   return widget;
 }
@@ -167,7 +174,7 @@ const agentKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 function agentAnswer(asked: string, ctx: AnswerContext): Widget {
   const names = [...new Set(ctx.tasks.map((t) => t.source).filter(Boolean))].sort();
   const agent = agentKey(asked) === '' ? undefined : names.find((n) => agentKey(n) === agentKey(asked));
-  if (agent === undefined) return text(`I do not see an agent called “${asked}” in the tasks.`);
+  if (agent === undefined) return text(`I do not see an agent called “${asked}” in the tasks.`, ctx);
 
   const mine = ctx.tasks.filter((t) => t.source === agent);
   // The latest change first; equal times by smaller id.
@@ -181,7 +188,7 @@ function agentAnswer(asked: string, ctx: AnswerContext): Widget {
     current: working[0] ? line(working[0], ctx) : null,
     alsoWorking: Math.max(0, working.length - 1),
     last: last ? line(last, ctx) : null,
-    source: DEMO_SOURCE,
+    source: ctx.source ?? DEMO_SOURCE,
   };
   return widget;
 }
@@ -196,14 +203,14 @@ function renameAnswer(ctx: AnswerContext): Widget {
   const pick = ctx.tasks
     .filter((t) => t.status !== 'Done' && t.priority && !t.task.startsWith('['))
     .sort(byImportanceThenId)[0];
-  if (!pick || !pick.priority) return text('I have no new title to suggest right now.');
+  if (!pick || !pick.priority) return text('I have no new title to suggest right now.', ctx);
   const widget: ProposalWidget = {
     kind: 'proposal',
     taskId: pick.id,
     before: pick.task,
     after: `[${pick.priority}] ${pick.task}`,
     status: 'pending',
-    source: DEMO_SOURCE,
+    source: ctx.source ?? DEMO_SOURCE,
   };
   return widget;
 }

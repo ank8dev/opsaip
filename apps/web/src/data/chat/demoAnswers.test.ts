@@ -29,7 +29,7 @@ describe('chips', () => {
     expect(CHIPS.map((c) => c.label)).toEqual([
       'Brief me', 'What needs me?', 'What’s not done?', 'What is claude-code doing?', 'Rename a task',
     ]);
-    expect(LIVE_CHIPS.map((c) => c.id)).toEqual(['brief', 'needs', 'open', 'agent']);
+    expect(LIVE_CHIPS.map((c) => c.id)).toEqual(['brief', 'needs', 'open']);
   });
 
   it('every chip answers from the demo data, with the demo source line', () => {
