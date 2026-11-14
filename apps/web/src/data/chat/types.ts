@@ -1,6 +1,7 @@
 // What a chat message holds. Pure data: no React. The components in
 // components/chat/ draw these; data/chat/ builds them.
 
+import type { AgentTaskStatus } from '@opsaip/core';
 import type { Priority, TaskStatus } from '../../types';
 
 /** One task as a chat widget shows it. Every field is copied from the workspace. */
@@ -81,7 +82,40 @@ export interface TextWidget extends WidgetBase {
   link?: { label: string; href: string };
 }
 
-export type Widget = BriefWidget | TaskListWidget | NeedsWidget | AgentWidget | ProposalWidget | TextWidget;
+/** A Conductor run: Claude Code working in its own git worktree. Strings from the agent are shown as text. */
+export interface RunWidget extends WidgetBase {
+  kind: 'run';
+  runId: string;
+  /** The task that tracks the run: its note says why a run failed. */
+  taskId: string;
+  title: string;
+  status: AgentTaskStatus;
+  branch: string;
+  /** The agent's latest text, then its final answer; '' if it has said nothing yet. */
+  lastMessage: string;
+  /** Stop was clicked and has not been answered yet. */
+  stopping: boolean;
+}
+
+/** pending: waiting for Allow or Deny. stale: no longer waiting (answered elsewhere, or the run ended). */
+export type PermissionState = 'pending' | 'allowed' | 'denied' | 'stale';
+
+/** The agent asks to use a tool. `tool` and `summary` are the agent's words: text only. */
+export interface PermissionWidget extends WidgetBase {
+  kind: 'permission';
+  runId: string;
+  permissionId: string;
+  tool: string;
+  summary: string;
+  state: PermissionState;
+  /** An answer is on its way: both buttons are disabled. */
+  busy: boolean;
+  /** Why the last answer did not go through; '' if nothing went wrong. */
+  error: string;
+}
+
+export type Widget =
+  | BriefWidget | TaskListWidget | NeedsWidget | AgentWidget | ProposalWidget | TextWidget | RunWidget | PermissionWidget;
 
 /** A message in the thread. `pending` is the placeholder while the server thinks. */
 export type ThreadMessage =

@@ -30,7 +30,7 @@ export type ParseTasksResult =
  *   title / agent / note present but not a string, or an id already seen
  *   (the first one wins; ids are React keys and must be unique).
  * - Only the known fields are copied, into fresh objects. Extra fields from a
- *   newer server are ignored.
+ *   newer server are ignored. `source` is kept only when it is "you".
  */
 export function parseTasksResponse(body: unknown): ParseTasksResult {
   if (!isRecord(body) || !Array.isArray(body.tasks)) {
@@ -40,7 +40,7 @@ export function parseTasksResponse(body: unknown): ParseTasksResult {
   const tasks: AgentTask[] = [];
   const seen = new Set<string>();
   for (const item of body.tasks as unknown[]) {
-    const task = parseTask(item);
+    const task = parseServerTask(item);
     if (task === undefined || seen.has(task.id)) continue;
     seen.add(task.id);
     tasks.push(task);
@@ -48,23 +48,27 @@ export function parseTasksResponse(body: unknown): ParseTasksResult {
   return { ok: true, tasks, skipped: body.tasks.length - tasks.length };
 }
 
-/** One server task as a UI Task. The server knows no owner, tool or priority yet. */
+/**
+ * One server task as a UI Task. The server knows no tool or priority yet.
+ * A task you created here (source "you") is yours: owner 'me', which the chat shows as "You".
+ */
 export function toUiTask(task: AgentTask): Task {
   return {
     id: task.id,
     task: task.title ?? task.id,
     tool: '',
     status: STATUS_LABEL[task.status],
-    owner: '',
+    owner: task.source === 'you' ? 'me' : '',
     source: task.agent ?? '',
     detail: task.note ?? '',
     since: task.updatedAt,
   };
 }
 
-function parseTask(item: unknown): AgentTask | undefined {
+/** One task from the server, or undefined if it breaks the contract. Same rules as parseTasksResponse. */
+export function parseServerTask(item: unknown): AgentTask | undefined {
   if (!isRecord(item)) return undefined;
-  const { id, status, updatedAt, title, agent, note } = item;
+  const { id, status, updatedAt, title, agent, note, source } = item;
 
   if (typeof id !== 'string' || id.trim() === '') return undefined;
   // hasOwn, not `in`: "toString" or "__proto__" must not count as statuses.
@@ -76,6 +80,7 @@ function parseTask(item: unknown): AgentTask | undefined {
   if (title !== undefined) task.title = title;
   if (agent !== undefined) task.agent = agent;
   if (note !== undefined) task.note = note;
+  if (source === 'you') task.source = source; // the only source there is; anything else is ignored
   return task;
 }
 
