@@ -2,9 +2,13 @@ import { useEffect, useRef } from 'react';
 import type { TaskStatus } from '../../types';
 import { ago } from '../../data/selectors';
 import type {
-  AgentWidget, BriefWidget, NeedsWidget, ProposalWidget, TaskLine, TaskListWidget, TextWidget, Widget,
+  AgentWidget, BriefWidget, NeedsWidget, PermissionWidget, ProposalWidget, RunWidget, TaskLine, TaskListWidget, TextWidget, Widget,
 } from '../../data/chat/types';
+import { isRunActive } from '../../data/chat/conductor';
+import { PERMISSION_OUTCOME_TEXT, RUN_STATUS_TEXT } from '../../data/chat/runWidget';
+import { STATUS_LABEL } from '../../data/serverTasks';
 import { useUi } from '../../state/ui';
+import { useWorkspace } from '../../state/workspace';
 import { useNow } from '../../lib/useNow';
 import { StatusDot } from '../common/StatusDot';
 
@@ -15,8 +19,18 @@ interface Props<W extends Widget> {
   widget: W;
 }
 
-/** One widget, with its source line underneath. `onDecide` answers a proposal. */
-export function WidgetView({ widget, onDecide }: { widget: Widget; onDecide: (d: 'approve' | 'cancel') => void }) {
+interface ViewProps {
+  widget: Widget;
+  /** Approve or Cancel a proposal. */
+  onDecide: (d: 'approve' | 'cancel') => void;
+  /** Allow or Deny a permission request. */
+  onAnswer: (allow: boolean) => void;
+  /** Stop the run. */
+  onStop: () => void;
+}
+
+/** One widget, with its source line underneath. */
+export function WidgetView({ widget, onDecide, onAnswer, onStop }: ViewProps) {
   return (
     <div className="op-w">
       {widget.kind === 'brief' && <Brief widget={widget} />}
@@ -25,6 +39,8 @@ export function WidgetView({ widget, onDecide }: { widget: Widget; onDecide: (d:
       {widget.kind === 'agent' && <AgentCard widget={widget} />}
       {widget.kind === 'proposal' && <Proposal widget={widget} onDecide={onDecide} />}
       {widget.kind === 'text' && <Text widget={widget} />}
+      {widget.kind === 'run' && <RunCard widget={widget} onStop={onStop} />}
+      {widget.kind === 'permission' && <PermissionCard widget={widget} onAnswer={onAnswer} />}
       {widget.source && <p className="op-w-source">{widget.source}</p>}
     </div>
   );
@@ -201,5 +217,69 @@ function Text({ widget }: Props<TextWidget>) {
         </p>
       )}
     </>
+  );
+}
+
+/** A Conductor run: title, status in words, the agent's latest text, the branch, and Stop while it is active. */
+function RunCard({ widget, onStop }: Props<RunWidget> & { onStop: () => void }) {
+  const { findTask } = useWorkspace();
+  const active = isRunActive(widget.status);
+  // Why it failed: the note on the run's task, if the server has sent it yet.
+  const note = widget.status === 'failed' ? (findTask(widget.taskId)?.detail ?? '') : '';
+  return (
+    <div className="op-w-run" data-status={widget.status}>
+      <p className="op-w-label">Claude Code run</p>
+      <p className="op-w-lead">{widget.title}</p>
+      <p className="op-w-status">
+        <StatusDot status={STATUS_LABEL[widget.status]} />
+        <span>{RUN_STATUS_TEXT[widget.status]}</span>
+      </p>
+      {widget.lastMessage !== '' && (
+        <>
+          <p className="op-w-label">{active ? 'Latest from the agent' : 'Its last message'}</p>
+          <p className="op-w-quote op-w-pre">{widget.lastMessage}</p>
+        </>
+      )}
+      {widget.status === 'failed' && <p className="op-w-more">{note !== '' ? `It failed: ${note}` : 'It failed.'}</p>}
+      {widget.status === 'done' && <p className="op-w-more">It finished. Its changes are on the branch below, for you to review.</p>}
+      <p className="op-w-meta">Branch: <code>{widget.branch}</code></p>
+      {active && (
+        <div className="op-w-acts">
+          <button type="button" className="op-sbtn" disabled={widget.stopping} onClick={onStop}>
+            {widget.stopping ? 'Stopping…' : 'Stop'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The agent asks to use a tool. Allow or Deny; the tool and what it would do are the agent's words, drawn as text. */
+function PermissionCard({ widget, onAnswer }: Props<PermissionWidget> & { onAnswer: (allow: boolean) => void }) {
+  const outcome = useRef<HTMLParagraphElement>(null);
+  const was = useRef(widget.state);
+  // The buttons go away once answered: keep focus in the card, on the outcome.
+  useEffect(() => {
+    if (was.current === 'pending' && widget.state !== 'pending') outcome.current?.focus({ preventScroll: true });
+    was.current = widget.state;
+  }, [widget.state]);
+
+  return (
+    <div className="op-w-prop op-w-perm" data-status={widget.state}>
+      <p className="op-w-label">Needs you</p>
+      <p className="op-w-lead">Claude Code asks to use {widget.tool}.</p>
+      <p className="op-w-quote op-w-pre">{widget.summary}</p>
+      {widget.state === 'pending' ? (
+        <>
+          <div className="op-w-acts">
+            <button type="button" className="op-sbtn op-sbtn-primary" disabled={widget.busy} onClick={() => onAnswer(true)}>Allow</button>
+            <button type="button" className="op-sbtn" disabled={widget.busy} onClick={() => onAnswer(false)}>Deny</button>
+          </div>
+          {widget.error !== '' && <p role="alert" className="op-w-outcome">{widget.error}</p>}
+        </>
+      ) : (
+        <p ref={outcome} tabIndex={-1} role="status" className="op-w-outcome">{PERMISSION_OUTCOME_TEXT[widget.state]}</p>
+      )}
+    </div>
   );
 }

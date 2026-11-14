@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AGENT_TASK_STATUSES } from '@opsaip/core';
 import type { TaskStatus } from '../types';
-import { STATUS_LABEL, parseTasksResponse, toUiTask } from './serverTasks';
+import { STATUS_LABEL, parseServerTask, parseTasksResponse, toUiTask } from './serverTasks';
 
 // Every UI label. Typed as a Record, so `tsc -b` fails if TaskStatus gains or
 // loses a label and this list is not updated.
@@ -146,5 +146,29 @@ describe('toUiTask', () => {
 
   it.each(AGENT_TASK_STATUSES)('maps status %s through STATUS_LABEL', (status) => {
     expect(toUiTask({ id: 't', status, updatedAt: valid.updatedAt }).status).toBe(STATUS_LABEL[status]);
+  });
+});
+
+describe('source "you"', () => {
+  it('is kept by parseTasksResponse when it is "you"', () => {
+    const r = parseTasksResponse({ tasks: [{ ...valid, source: 'you' }] });
+    expect(r).toEqual({ ok: true, skipped: 0, tasks: [{ ...valid, source: 'you' }] });
+  });
+
+  it('anything else is ignored, and the task is still read', () => {
+    for (const source of ['codex', 'You', '', 5, null, {}, ['you']]) {
+      const r = parseTasksResponse({ tasks: [{ ...valid, source }] });
+      expect(r).toEqual({ ok: true, skipped: 0, tasks: [valid] });
+    }
+  });
+
+  it('a task you created is yours: owner me, which the chat shows as You', () => {
+    expect(toUiTask({ ...valid, status: 'running' as const, source: 'you' as const }).owner).toBe('me');
+    expect(toUiTask({ ...valid, status: 'running' as const }).owner).toBe('');
+  });
+
+  it('parseServerTask reads one task, or undefined', () => {
+    expect(parseServerTask({ ...valid, source: 'you', title: 'T' })).toEqual({ ...valid, source: 'you', title: 'T' });
+    for (const bad of [undefined, null, 'x', [], {}, { ...valid, status: 'nope' }]) expect(parseServerTask(bad)).toBeUndefined();
   });
 });

@@ -224,3 +224,6 @@
 /* Server data: the composer is a read-only note */
 .op-composer-readonly { padding: 14px 18px; }
 .op-readonly-note { margin: 0; font-size: 13px; line-height: 20px; color: var(--op-text-muted); }
+.op-readonly-note a { color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; }
+.op-linkbtn { margin: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.op-readonly-note a:focus-visible, .op-linkbtn:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 4px; }

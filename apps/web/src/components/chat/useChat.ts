@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { askProblemReply, askReply } from '../../data/chat/ask';
+import { createTaskReply } from '../../data/chat/tasks';
 import { decideProposal, demoAnswer } from '../../data/chat/demoAnswers';
 import type { ThreadMessage } from '../../data/chat/types';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
+import type { Widget } from '../../data/chat/types';
+import { useRequests } from './useRequests';
+import { useRun } from './useRun';
 
 /** The server has 20 s to answer (it replies 504 after that); give up a little later. */
 const ASK_TIMEOUT_MS = 30_000;
@@ -14,12 +18,40 @@ const ASK_TIMEOUT_MS = 30_000;
  * the server's Ask, and the answer replaces a "waiting" message.
  */
 export function useChat() {
-  const { allTasks, people, readOnly, source, ask, changeTask, findTask } = useWorkspace();
+  const { allTasks, people, readOnly, source, ask, api, changeTask, findTask } = useWorkspace();
   const ui = useUi();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const nextId = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  const requests = useRequests();
+
+  const say = useCallback((text: string) => {
+    setMessages((list) => [...list, { id: nextId.current++, from: 'you', text }]);
+  }, []);
+  const push = useCallback((widget: Widget, pending?: boolean): number => {
+    const id = nextId.current++;
+    setMessages((list) => [...list, { id, from: 'opsy', widget, ...(pending ? { pending: true } : {}) }]);
+    return id;
+  }, []);
+  const patch = useCallback((id: number, change: (w: Widget) => Widget) => {
+    setMessages((list) => list.map((m) => (m.id === id && m.from === 'opsy' ? { id, from: 'opsy', widget: change(m.widget) } : m)));
+  }, []);
+  const runs = useRun({ live: readOnly, api, request: requests.request, say, push, patch });
+
+  /** Live, Task mode: create the task on the server. Resolves true if it was created. */
+  const createTask = useCallback(
+    async (text: string): Promise<boolean> => {
+      ui.closeTask();
+      say(text);
+      const waiting = push({ kind: 'text', text: 'Creating the task…' }, true);
+      const result = await requests.request((signal) => api.createTask(text, signal));
+      if (result === undefined) return false;
+      patch(waiting, () => createTaskReply(result));
+      return result.ok;
+    },
+    [ui, say, push, patch, requests.request, api],
+  );
 
   // Leaving the page stops a question that is still on its way.
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
@@ -78,7 +110,10 @@ export function useChat() {
     [messages, findTask, readOnly, changeTask],
   );
 
-  return { messages, busy, send, decide, live: readOnly, serverOffline: source.status === 'offline' };
+  return {
+    messages, busy: busy || requests.busy, send, decide, live: readOnly, serverOffline: source.status === 'offline',
+    createTask, ...runs,
+  };
 }
 
 export type Chat = ReturnType<typeof useChat>;

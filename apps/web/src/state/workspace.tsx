@@ -13,6 +13,7 @@ import {
   clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
 import { askQuestion, type AskResult } from '../data/chat/ask';
+import { makeServerApi, type ServerApi } from '../data/chat/serverApi';
 import { keepLastGood, startPoller, type DataSource, type LiveState } from '../data/poller';
 
 type SyncFlag = 'conflict' | 'suggested' | '';
@@ -28,6 +29,8 @@ interface WorkspaceValue {
   disconnect: () => void;
   /** Ask the server a question (Live only). The token stays in here. Never throws. */
   ask: (question: string, signal: AbortSignal) => Promise<AskResult>;
+  /** Create tasks and drive Conductor runs on the server (Live only). The token stays in here. Never throws. */
+  api: ServerApi;
   people: Record<string, Person>;
   /** Tasks from the workspace, with preview edits applied (Demo only). */
   tasks: Task[];
@@ -110,6 +113,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         : askQuestion(connection.token, question, signal),
     [connection],
   );
+
+  const api = useMemo(() => makeServerApi(connection?.token ?? null), [connection]);
 
   const [taskPatches, setTaskPatches] = useState<Record<string, Partial<Task>>>({});
   const [localTasks, setLocalTasks] = useState<LocalTask[]>([]);
@@ -262,7 +267,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value: WorkspaceValue = {
-    ws, source, readOnly, connect, disconnect, ask, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
+    ws, source, readOnly, connect, disconnect, ask, api, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
     linkNote: (id) => linkNotes[id] ?? '',
     messagesFor, decisionTasks, attentionTasks,
     changeTask, addLocalTask, addMessage, resolveConflict, linkSuggestion, dismissSuggestion,
