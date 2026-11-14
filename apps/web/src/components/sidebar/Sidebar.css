@@ -142,3 +142,9 @@ div.op-person:hover { background: transparent; }
   .op-side { height: auto; padding: 12px 12px 4px; border-right: 0; border-bottom: 1px solid var(--op-border); }
   .op-side-foot, .op-hours-sec { display: none; }
 }
+
+/* The quiet update note and the About values */
+.op-update { margin: 0 0 6px; padding: 0 12px; font-size: 12px; line-height: 16px; }
+.op-update a { color: var(--op-text-muted); text-decoration: underline; text-underline-offset: 2px; }
+.op-update a:hover { color: var(--op-text); }
+.op-update a:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 2px; }
