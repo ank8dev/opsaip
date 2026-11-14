@@ -12,6 +12,12 @@ describe('describeSource', () => {
     expect(v.detail).toContain('Settings');
   });
 
+  it('Not connected: muted, asks for the token', () => {
+    const v = describeSource({ status: 'disconnected' }, NOW);
+    expect(v).toMatchObject({ label: 'Not connected', tone: 'muted' });
+    expect(v.detail).toContain('token');
+  });
+
   it('Connecting: muted', () => {
     expect(describeSource({ status: 'connecting' }, NOW)).toMatchObject({ label: 'Connecting', tone: 'muted' });
   });
@@ -60,6 +66,10 @@ describe('ago', () => {
 });
 
 describe('noDecisionsText', () => {
+  it('does not claim nothing needs you when there is no server', () => {
+    expect(noDecisionsText({ status: 'disconnected' }, NOW)).toBe('Not connected to a server');
+  });
+
   const NOTHING = 'Nothing needs you right now';
 
   it('says "Nothing needs you right now" only for Demo and Live', () => {

@@ -1,6 +1,9 @@
 // Where workspace data comes from. This is the one place that decides:
 //
-//   no saved connection -> Demo: the sample team in ../mocks;
+//   no saved connection -> the Connect screen. Demo (the sample team in
+//                          ../mocks) exists only in dev and in tests: in a
+//                          production build DEMO_ENABLED is false and the
+//                          bundler removes the sample data;
 //   a saved connection  -> Server: GET /v1/tasks on this page's own origin.
 //
 // API paths are always relative ("/v1/..."), never a host: in production the
@@ -28,10 +31,20 @@ export interface Connection {
 /** The part of the Web Storage API used here; sessionStorage in the app, a fake in tests. */
 export type KeyValueStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-/** The sample workspace, shown when no server connection is saved. */
+/**
+ * True in dev (`npm run dev`) and in tests, false in a production build.
+ * Vite replaces import.meta.env.DEV with a literal, so every `if (DEMO_ENABLED)`
+ * branch, and the sample data behind it, is dropped from the production bundle.
+ */
+export const DEMO_ENABLED: boolean = import.meta.env.DEV;
+
+/** The sample workspace for dev and tests. In production it is empty: users never see sample data. */
 export function loadWorkspace(): Workspace {
-  return mockWorkspace;
+  return DEMO_ENABLED ? mockWorkspace : serverWorkspace([]);
 }
+
+/** Where the README tells how to run and connect a server. */
+export const README_URL = 'https://github.com/ank8dev/opsaip#run-the-server';
 
 /** A workspace with only the server's tasks. Everything else is empty, not sample data. */
 export function serverWorkspace(tasks: Task[]): Workspace {
@@ -53,7 +66,7 @@ export function tokenProblem(token: string): string | undefined {
   return undefined;
 }
 
-/** The saved connection, or null for Demo. A blocked or broken storage counts as none. */
+/** The saved connection, or null for none. A blocked or broken storage counts as none. */
 export function loadConnection(storage: KeyValueStore | undefined = sessionStore()): Connection | null {
   try {
     const token = storage?.getItem(TOKEN_KEY) ?? null;
@@ -83,7 +96,7 @@ export function saveConnection(
   return { ok: true, connection: { token } };
 }
 
-/** Forget the token: back to Demo. */
+/** Forget the token: back to the Connect screen (Demo in dev). */
 export function clearConnection(storage: KeyValueStore | undefined = sessionStore()): void {
   try {
     storage?.removeItem(TOKEN_KEY);
