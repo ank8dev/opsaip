@@ -5,6 +5,7 @@ import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
 import { Face } from '../common/Face';
 import { StatusDot } from '../common/StatusDot';
+import { feature } from '../../features';
 import { Group, Row, SectionLabel, useSearchHit, type SectionMode } from './parts';
 
 const GROUPS: { status: TaskStatus; label: string }[] = [
@@ -43,6 +44,9 @@ export function AgentsSection({ mode }: { mode: SectionMode }) {
   return (
     <div className="op-sv" role="region" aria-label="Agents">
       <SectionLabel mode={mode}>Agents</SectionLabel>
+      {!groups.some((g) => g.items.length) && (
+        <p className="op-sv-empty">No tasks yet. Agents you connect through MCP, and runs you start here, appear here.</p>
+      )}
       {groups.map((g) => {
         if (!g.items.length) return null;
         const shown = g.items.filter(matches).length;
@@ -63,7 +67,7 @@ export function AgentsSection({ mode }: { mode: SectionMode }) {
                     {isLocal(t) ? <Face label="Y" small /> : owner && <Face person={owner} small />}
                     <span className="op-arow-sub">
                       {[t.tool, t.detail].filter(Boolean).join(' · ')}
-                      {!isLocal(t) && syncFlag(t.id) === 'conflict' && (
+                      {feature('linkedItems') && !isLocal(t) && syncFlag(t.id) === 'conflict' && (
                         <> · <span className="op-flag">Out of sync</span></>
                       )}
                     </span>

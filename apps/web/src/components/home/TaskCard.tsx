@@ -9,6 +9,7 @@ import { EXTERNAL_NOTE, NO_CHAT_NOTE, chatTabMode } from '../../data/chat/transc
 import type { Chat as ChatControls } from '../chat/useChat';
 import { StatusDot } from '../common/StatusDot';
 import { LinkedItems } from './LinkedItems';
+import { feature } from '../../features';
 import { TaskOverlay } from './TaskOverlay';
 import { RunChat } from './RunChat';
 
@@ -72,11 +73,13 @@ export function TaskCard({ task, chat }: { task: AnyTask; chat: ChatControls }) 
               {meta && task.detail && ' · '}
               {task.detail && <span className="op-note">{task.detail}</span>}
             </div>
-            {!isLocal(task) && <LinkedItems task={task} />}
+            {!isLocal(task) && feature('linkedItems') && <LinkedItems task={task} />}
             <Chat messages={messagesFor(task)} you={owner?.name ?? 'You'} agent={task.source || 'Agent'} />
-            <div className="op-chat-foot">
-              {isLocal(task) ? 'Started here · not saved yet' : task.source ? `Exported from ${task.source} · read only` : 'Read only'}
-            </div>
+            {(!isLocal(task) || feature('previewSettings')) && (
+              <div className="op-chat-foot">
+                {isLocal(task) ? 'Started here · not saved yet' : task.source ? `Exported from ${task.source} · read only` : 'Read only'}
+              </div>
+            )}
           </>
         ) : mode === 'run' && runId !== undefined ? (
           <RunChat runId={runId} title={task.task} send={chat.sendToRun} />

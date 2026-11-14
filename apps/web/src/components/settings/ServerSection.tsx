@@ -3,6 +3,7 @@ import { useWorkspace } from '../../state/workspace';
 import { useNow } from '../../lib/useNow';
 import { Card, SettingRow, SettingsSection } from './parts';
 import { TokenForm } from './TokenForm';
+import { feature } from '../../features';
 
 /**
  * The connection to the Opsaip server. Unlike the preview settings, this one
@@ -17,7 +18,7 @@ export function ServerSettings() {
   const view = describeSource(source, now.getTime());
   const connected = source.status !== 'demo' && source.status !== 'disconnected';
   return (
-    <SettingsSection id="set-server" title="Server" lead="Your Opsaip server. Unlike the previews below, this setting is real.">
+    <SettingsSection id="set-server" title="Server" lead={feature('previewSettings') ? 'Your Opsaip server. Unlike the previews below, this setting is real.' : 'The Opsaip server this app talks to.'}>
       <Card>
         <SettingRow
           title={

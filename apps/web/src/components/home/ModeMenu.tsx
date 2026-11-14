@@ -3,24 +3,30 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useMotionTokens } from '../../state/ui';
 import { popover } from '../../styles/motion';
+import { feature } from '../../features';
 import { AgentsIcon, AnnounceIcon, AskIcon, MessageIcon, TaskIcon } from '../common/Icons';
 
 export type ComposeMode = 'ask' | 'task' | 'message' | 'agent' | 'announce';
 
 export const MODES: { key: ComposeMode; title: string; description: string; Icon: typeof TaskIcon }[] = [
   { key: 'ask', title: 'Ask', description: 'Ask Opsy about your tasks', Icon: AskIcon },
-  { key: 'task', title: 'Task', description: 'Assign work to a teammate', Icon: TaskIcon },
+  { key: 'task', title: 'Task', description: 'Add a task to your list', Icon: TaskIcon },
   { key: 'message', title: 'Message', description: 'Write to one teammate on Slack', Icon: MessageIcon },
-  { key: 'agent', title: 'Agent', description: 'Start Claude Code or Codex', Icon: AgentsIcon },
+  { key: 'agent', title: 'Agent', description: 'Start Claude Code', Icon: AgentsIcon },
   { key: 'announce', title: 'Announce', description: 'Tell the whole team on Slack', Icon: AnnounceIcon },
 ];
+
+/** The modes in the menu: Ask, Task and Agent; Message and Announce only preview Slack, so they are flagged. */
+export function availableModes() {
+  return MODES.filter((m) => (m.key === 'message' ? feature('message') : m.key === 'announce' ? feature('announce') : true));
+}
 
 interface ModeMenuProps {
   mode: ComposeMode;
   onChange: (m: ComposeMode) => void;
 }
 
-/** One button that shows the current mode and opens a menu of all five. */
+/** One button that shows the current mode and opens a menu of the modes. */
 export function ModeMenu({ mode, onChange }: ModeMenuProps) {
   const t = useMotionTokens();
   const [open, setOpen] = useState(false);
@@ -28,6 +34,7 @@ export function ModeMenu({ mode, onChange }: ModeMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [pos, setPos] = useState({ left: 0, bottom: 0 });
+  const modes = availableModes();
   const current = MODES.find((m) => m.key === mode) ?? MODES[0];
 
   // The composer sits at the bottom, so the menu opens upward from the button.
@@ -44,7 +51,7 @@ export function ModeMenu({ mode, onChange }: ModeMenuProps) {
 
   useEffect(() => {
     if (!open) return;
-    const i = MODES.findIndex((m) => m.key === mode);
+    const i = modes.findIndex((m) => m.key === mode);
     itemRefs.current[Math.max(0, i)]?.focus({ preventScroll: true });
     const onDown = (e: PointerEvent) => {
       const n = e.target as Node;
@@ -60,7 +67,7 @@ export function ModeMenu({ mode, onChange }: ModeMenuProps) {
   }, [open, mode]);
 
   function onItemKey(e: KeyboardEvent, i: number) {
-    const n = MODES.length;
+    const n = modes.length;
     const go = (j: number) => itemRefs.current[(j + n) % n]?.focus();
     if (e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); go(i - 1); }
@@ -99,7 +106,7 @@ export function ModeMenu({ mode, onChange }: ModeMenuProps) {
             style={{ left: pos.left, bottom: pos.bottom, transformOrigin: 'bottom left' }}
             {...popover(t, 4)}
           >
-            {MODES.map((m, i) => (
+            {modes.map((m, i) => (
               <button
                 key={m.key}
                 ref={(el) => { itemRefs.current[i] = el; }}
