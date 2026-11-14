@@ -212,3 +212,25 @@
 .op-readonly-note a { color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; }
 .op-linkbtn { margin: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .op-readonly-note a:focus-visible, .op-linkbtn:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 4px; }
+
+/* ===== Attachments in the composer ===== */
+.op-attach-list { list-style: none; margin: 0; padding: 0 0 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.op-attach-list:empty { display: none; }
+.op-attach { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 6px 4px 4px; border-radius: 10px; border: 1px solid var(--op-border); background: var(--op-surface); }
+.op-attach[data-status="error"] { border-color: var(--op-error); }
+.op-attach-thumb { width: 32px; height: 32px; flex: none; border-radius: 7px; object-fit: cover; background: var(--op-hover); }
+.op-attach-kind { display: grid; place-items: center; font-family: var(--op-mono); font-size: 10px; letter-spacing: 0.04em; color: var(--op-text-secondary); }
+.op-attach-text { display: flex; flex-direction: column; min-width: 0; }
+.op-attach-name { font-size: 12px; line-height: 16px; font-weight: 500; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-attach-sub { font-size: 11px; line-height: 14px; color: var(--op-text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-attach[data-status="error"] .op-attach-sub { color: var(--op-error); white-space: normal; }
+.op-attach-x { flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--op-text-secondary); font-size: 16px; line-height: 1; cursor: pointer; }
+.op-attach-x:hover { background: var(--op-hover); color: var(--op-text); }
+.op-attach-x:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 1px; }
+.op-plus { flex: none; width: 28px; height: 28px; border: 1px solid var(--op-border); border-radius: 8px; background: transparent; color: var(--op-text-secondary); font-size: 18px; line-height: 1; cursor: pointer; transition: background-color var(--op-dur-fast) var(--op-ease-out); }
+.op-plus:hover { background: var(--op-hover); color: var(--op-text); }
+.op-plus:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; }
+.op-plus:disabled { opacity: 0.45; cursor: not-allowed; }
+.op-composer[data-drop="true"] { outline: 2px dashed var(--op-border-control); outline-offset: -2px; }
+.op-attach-line { margin: 0; font-size: 12px; line-height: 16px; color: var(--op-text-muted); }
+.op-attach-warn { margin: 0 0 4px; font-size: 12px; line-height: 16px; color: var(--op-error); }

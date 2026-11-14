@@ -9,6 +9,7 @@ import {
 import { useUi } from '../../state/ui';
 import { useWorkspace } from '../../state/workspace';
 import { listItem } from '../../styles/motion';
+import { FileChip } from './AttachmentChips';
 
 /** Poll every 2 s while the run is active; a few more times after it ends, for `canResume`. */
 const POLL_MS = 2000;
@@ -117,6 +118,11 @@ export function RunChat({
           <motion.div key={e.id} className={`op-msg ${e.role === 'you' ? 'op-msg-user' : 'op-msg-ai'}`} {...listItem(t, 0)}>
             <span className="op-msg-who">{e.role === 'you' ? 'You' : 'Agent'}{e.kind === 'followup' && <span className="op-msg-via"> · follow-up</span>}</span>
             <span className="op-msg-body op-pre">{e.text}</span>
+            {e.attachments && (
+              <span className="op-msg-files" aria-label="Attached files">
+                {e.attachments.map((f, i) => <FileChip key={i} name={f.name} kind={f.kind} size={f.size} />)}
+              </span>
+            )}
           </motion.div>
         ))}
         {transcript !== null && transcript.truncated && <p className="op-runchat-note">Older messages were dropped to keep the chat small.</p>}

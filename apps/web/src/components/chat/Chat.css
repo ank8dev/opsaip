@@ -127,3 +127,10 @@
   .op-hello { font-size: 32px; line-height: 38px; }
   .op-bub { max-width: 92%; }
 }
+
+/* Files sent with a message, in the run's chat history */
+.op-msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.op-chip-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 8px 3px 4px; border-radius: 8px; border: 1px solid var(--op-border); background: var(--op-surface); font-size: 12px; line-height: 16px; }
+.op-chip-badge { padding: 1px 5px; border-radius: 5px; background: var(--op-hover); font-family: var(--op-mono); font-size: 10px; color: var(--op-text-secondary); }
+.op-chip-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-chip-size { color: var(--op-text-muted); }

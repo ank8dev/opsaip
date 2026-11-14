@@ -312,3 +312,25 @@ describe('startRunExact and the conductor status extras', () => {
     expect(parseConductorStatus({ enabled: true })).toEqual({ enabled: true });
   });
 });
+
+describe('attachments in runs and follow-ups', () => {
+  const okRun = { run: { id: 'r', taskId: 't', status: 'running', branch: 'b' } };
+
+  it('start sends the ids next to the exact title and prompt', async () => {
+    const { impl, calls } = fakeFetch(json(201, okRun));
+    await startRun('tok', 'Fix it\nplease', signal, impl, ['u1']);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ title: 'Fix it', prompt: 'Fix it\nplease', attachments: ['u1'] });
+    const b = fakeFetch(json(201, okRun));
+    await startRunExact('tok', { title: 'T', prompt: 'P', attachments: ['u9'] }, signal, b.impl);
+    expect(JSON.parse(String(b.calls[0].init.body))).toEqual({ title: 'T', prompt: 'P', attachments: ['u9'] });
+  });
+
+  it('a follow-up sends the ids, and the old body when there are none', async () => {
+    const a = fakeFetch(json(200, okRun));
+    await sendFollowUp('tok', 'r', 'look', signal, a.impl, ['u2']);
+    expect(JSON.parse(String(a.calls[0].init.body))).toEqual({ text: 'look', attachments: ['u2'] });
+    const b = fakeFetch(json(200, okRun));
+    await sendFollowUp('tok', 'r', 'look', signal, b.impl);
+    expect(JSON.parse(String(b.calls[0].init.body))).toEqual({ text: 'look' });
+  });
+});
