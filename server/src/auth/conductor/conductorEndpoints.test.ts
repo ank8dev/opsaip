@@ -1,7 +1,7 @@
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { createTaskStore } from '@opsaip/core';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../app';
@@ -17,6 +17,7 @@ const JSON_HEADERS = { ...AUTH, 'content-type': 'application/json' };
 let server: Server | undefined;
 let manager: RunManager | undefined;
 let base = '';
+let repoDir = '';
 
 afterAll(cleanUp);
 afterEach(async () => {
@@ -36,7 +37,7 @@ async function start(scenario?: string): Promise<void> {
       ? undefined
       : createRunManager({
           store,
-          repoDir: makeRepo(),
+          repoDir: (repoDir = makeRepo()),
           worktreesDir: join(tempDir(), 'worktrees'),
           agentCommand: fakeCommand(scenario, join(tempDir(), 'record.jsonl')),
           log: () => {},
@@ -82,6 +83,7 @@ describe('Conductor mode off', () => {
       await post('/v1/runs', { title: 't', prompt: 'p' }),
       await post('/v1/runs', 'not json', AUTH),
       await get('/v1/runs/abc'),
+      await get('/v1/runs/abc/transcript'),
       await post('/v1/runs/abc/permission', { allow: true, permissionId: 'x' }),
       await post('/v1/runs/abc/message', { text: 'x' }),
       await post('/v1/runs/abc/cancel'),
@@ -95,7 +97,48 @@ describe('Conductor mode off', () => {
 describe('Conductor mode on', () => {
   it('GET /v1/conductor says it is on', async () => {
     await start('success');
-    expect(await json(await get('/v1/conductor'))).toEqual({ enabled: true, agent: 'claude-code' });
+    expect(await json(await get('/v1/conductor'))).toEqual({ enabled: true, agent: 'claude-code', repo: basename(repoDir), active: false });
+  });
+
+  it('GET /v1/conductor: the repo is the folder name only, and active follows the run', async () => {
+    await start('hang');
+    const body = await json(await get('/v1/conductor'));
+    expect(body.repo).toBe(basename(repoDir));
+    expect(JSON.stringify(body)).not.toContain(dirname(repoDir));
+    expect(body.active).toBe(false);
+    const run = await newRun();
+    expect((await json(await get('/v1/conductor'))).active).toBe(true);
+    await post(`/v1/runs/${run.id}/cancel`);
+    await manager!.stopActive();
+    expect((await json(await get('/v1/conductor'))).active).toBe(false);
+  });
+
+  it('GET /v1/runs/:id/transcript: 200 with the entries; 404 for an unknown run', async () => {
+    await start('followup');
+    const run = await newRun();
+    await pollRun(run.id, (view) => view.lastMessage === 'Send me a follow-up');
+    const live = await json(await get(`/v1/runs/${run.id}/transcript`));
+    expect(live).toEqual({
+      transcript: {
+        entries: [
+          { id: 1, role: 'you', kind: 'prompt', text: 'Please fix it', at: expect.any(String) },
+          { id: 2, role: 'agent', kind: 'message', text: 'Send me a follow-up', at: expect.any(String) },
+        ],
+        finished: false,
+        canResume: false,
+        truncated: false,
+      },
+    });
+    await post(`/v1/runs/${run.id}/message`, { text: 'Also the docs' });
+    await pollRun(run.id, (view) => view.status === 'done');
+    const done = (await json(await get(`/v1/runs/${run.id}/transcript`))).transcript;
+    expect(done.entries.map((entry: Record<string, unknown>) => entry.kind)).toEqual(['prompt', 'message', 'followup', 'message']);
+    expect(done.finished).toBe(true);
+    expect(JSON.stringify(done)).not.toContain('fake-session');
+
+    const missing = await get('/v1/runs/unknown-run/transcript');
+    expect(missing.status).toBe(404);
+    expect(await json(missing)).toEqual({ error: 'run not found' });
   });
 
   it('every path needs the access token', async () => {
@@ -104,6 +147,7 @@ describe('Conductor mode on', () => {
       ['GET', '/v1/conductor'],
       ['POST', '/v1/runs'],
       ['GET', '/v1/runs/abc'],
+      ['GET', '/v1/runs/abc/transcript'],
       ['POST', '/v1/runs/abc/permission'],
       ['POST', '/v1/runs/abc/message'],
       ['POST', '/v1/runs/abc/cancel'],
@@ -111,6 +155,15 @@ describe('Conductor mode on', () => {
       const res = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
       expect(res.status, `${method} ${path}`).toBe(401);
     }
+  });
+
+  it('the transcript needs the right token: 401 without or with a wrong one, 200 with it', async () => {
+    await start('success');
+    const run = await newRun();
+    const path = `/v1/runs/${run.id}/transcript`;
+    expect((await fetch(`${base}${path}`)).status).toBe(401);
+    expect((await fetch(`${base}${path}`, { headers: { authorization: 'Bearer wrong-token-0123456789abcdef0123' } })).status).toBe(401);
+    expect((await fetch(`${base}${path}`, { headers: AUTH })).status).toBe(200);
   });
 
   it('POST /v1/runs: 201 with the run; GET shows it until done; the task is in /v1/tasks', async () => {
@@ -185,7 +238,13 @@ describe('Conductor mode on', () => {
     expect((await post(`/v1/runs/${run.id}/message`, { text: 'Also the docs' })).status).toBe(200);
     const done = await pollRun(run.id, (view) => view.status === 'done');
     expect(done.lastMessage).toBe('follow-up: Also the docs');
-    expect((await post(`/v1/runs/${run.id}/message`, { text: 'late' })).status).toBe(409);
+    // Finished, and (once its agent has exited) resumable: a follow-up continues the run.
+    await pollRun(run.id, () => true);
+    for (let tries = 0; tries < 400; tries++) {
+      if ((await json(await get(`/v1/runs/${run.id}/transcript`))).transcript.canResume) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect((await post(`/v1/runs/${run.id}/message`, { text: 'late' })).status).toBe(200);
   });
 
   it('cancel: 200 and failed, then 409; 404 for an unknown run', async () => {

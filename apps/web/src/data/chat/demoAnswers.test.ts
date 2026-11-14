@@ -29,7 +29,7 @@ describe('chips', () => {
     expect(CHIPS.map((c) => c.label)).toEqual([
       'Brief me', 'What needs me?', 'What’s not done?', 'What is claude-code doing?', 'Rename a task',
     ]);
-    expect(LIVE_CHIPS.map((c) => c.id)).toEqual(['brief', 'needs', 'open', 'agent']);
+    expect(LIVE_CHIPS.map((c) => c.id)).toEqual(['brief', 'needs', 'open']);
   });
 
   it('every chip answers from the demo data, with the demo source line', () => {
@@ -296,5 +296,38 @@ describe('people without a match', () => {
     const people: Readonly<Record<string, Person>> = {};
     const r = demoAnswer('What needs me?', { tasks: [task('a', 'Needs you', { owner: 'ghost' })], people }) as NeedsWidget;
     expect(r.tasks[0].owner).toBe('');
+  });
+});
+
+describe('the shared "needs you" rule', () => {
+  const ctx: AnswerContext = {
+    tasks: [task('a', 'Needs you'), task('b', 'Working'), task('c', 'Working'), task('d', 'Failed')],
+    people: {},
+    pendingPermissionTaskIds: ['b'],
+  };
+
+  it('the Brief counts a task with a pending permission request as needing you', () => {
+    const w = demoAnswer('Brief me', ctx) as BriefWidget;
+    expect(w.counts).toEqual([
+      { status: 'Needs you', count: 2 },
+      { status: 'Working', count: 1 },
+      { status: 'Failed', count: 1 },
+    ]);
+  });
+
+  it('What needs me? lists the same two tasks', () => {
+    const w = demoAnswer('What needs me?', ctx) as NeedsWidget;
+    expect(w.tasks.map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('What’s not done? counts it once, not as Needs you and Working', () => {
+    const w = demoAnswer('What’s not done?', ctx) as TaskListWidget;
+    expect(w.tasks.filter((t) => t.id === 'b')).toHaveLength(1);
+    expect(w.tasks.find((t) => t.id === 'b')?.status).toBe('Needs you');
+  });
+
+  it('does not change the tasks it was given', () => {
+    const frozen = freeze({ ...ctx, tasks: ctx.tasks.map((t) => ({ ...t })) });
+    expect(() => demoAnswer('Brief me', frozen)).not.toThrow();
   });
 });

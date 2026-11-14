@@ -1,11 +1,14 @@
 // The HTTP endpoints of Conductor mode. app.ts mounts them behind the same
 // access-token guard as every other /v1 path; nothing here checks the token.
 //
-//   GET  /v1/conductor                200 { enabled, agent: "claude-code", reason? }
+//   GET  /v1/conductor                200 { enabled, agent: "claude-code", reason? } when on, also
+//                                     { repo: "<folder name only>", active: <a run is active> }
 //   POST /v1/runs                     { title, prompt } -> 201 { run } | 400 | 409 | 413 | 415 | 500 | 503
 //   GET  /v1/runs/:id                 200 { run } | 404 | 503
+//   GET  /v1/runs/:id/transcript      200 { transcript: { entries: [{ id, role, kind, text, at }], finished, canResume, truncated } } | 404 | 503
 //   POST /v1/runs/:id/permission      { allow, permissionId } -> 200 { run } | 400 | 404 | 409 | 413 | 415 | 503
 //   POST /v1/runs/:id/message         { text } -> 200 { run } | 400 | 404 | 409 | 413 | 415 | 503
+//                                     (to a finished run: resumes it, if canResume)
 //   POST /v1/runs/:id/cancel          (no body) -> 200 { run } | 404 | 409 | 503
 //
 // 503: Conductor mode is off. 409: one run at a time, or the run is not in a
@@ -49,7 +52,7 @@ export function conductorRoutes({
           200,
           manager === undefined
             ? { enabled: false, agent: RUN_AGENT, reason: CONDUCTOR_OFF }
-            : { enabled: true, agent: RUN_AGENT },
+            : { enabled: true, agent: RUN_AGENT, repo: manager.repoName, active: manager.active() },
         ),
     },
     '/v1/runs': {
@@ -69,6 +72,14 @@ export function conductorRoutes({
         const run = manager.get(id);
         if (run === undefined) return sendJson(res, 404, { error: 'run not found' });
         sendJson(res, 200, { run });
+      },
+    },
+    '/v1/runs/:id/transcript': {
+      GET: (_req, res, { id }) => {
+        if (manager === undefined) return off(res);
+        const transcript = manager.transcript(id);
+        if (transcript === undefined) return sendJson(res, 404, { error: 'run not found' });
+        sendJson(res, 200, { transcript });
       },
     },
     '/v1/runs/:id/permission': {

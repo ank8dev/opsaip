@@ -12,6 +12,9 @@
 //   claude -p                                   print (headless) mode; required by the flags below
 //     --input-format stream-json                prompt and follow-ups as JSON lines on stdin
 //     --output-format stream-json --verbose     events as JSON lines on stdout ("stream-json requires --verbose" with -p)
+//     --resume <session id>                     (only to continue a finished run) continue that session
+//                                               in the same working directory: `-r, --resume [value]`, "Resume a
+//                                               conversation by session ID or name" in `claude --help`
 //     --permission-mode acceptEdits             file edits in the working directories without asking
 //     --mcp-config <file> --strict-mcp-config   load ONLY the Opsaip permission server (see claudeArgs)
 //     --permission-prompt-tool mcp__opsaip__approve
@@ -48,8 +51,9 @@ const OUTPUT_DRAIN_MS = 1_000;
  * docs/CONNECT.md, and the agent would report the run's work a second time
  * as a new task.
  */
-export function claudeArgs(mcpConfigPath: string): string[] {
+export function claudeArgs(mcpConfigPath: string, resumeSessionId?: string): string[] {
   return [
+    ...(resumeSessionId === undefined ? [] : ['--resume', resumeSessionId]),
     '-p',
     '--input-format',
     'stream-json',
@@ -195,7 +199,9 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
   const onLine = (line: string): void => {
     const parsed = parseAgentLine(line);
     if (parsed === undefined || turnEnded || stopping) return;
-    if (parsed.kind === 'message') emit({ type: 'message', text: parsed.text });
+    if (parsed.kind === 'init') {
+      if (parsed.sessionId !== undefined) emit({ type: 'session', sessionId: parsed.sessionId });
+    } else if (parsed.kind === 'message') emit({ type: 'message', text: parsed.text });
     else if (parsed.kind === 'result') {
       turnEnded = true;
       endInput();
@@ -208,7 +214,7 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
   return {
     agent: 'claude-code',
 
-    async start({ cwd, prompt, onEvent }: DriverStartOptions) {
+    async start({ cwd, prompt, resumeSessionId, onEvent }: DriverStartOptions) {
       if (startCalled || finished) throw new Error('this driver was already used or stopped');
       startCalled = true;
       emit = onEvent;
@@ -244,7 +250,7 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
       const [file, ...before] = command;
       let proc: ChildProcess;
       try {
-        proc = spawn(file, [...before, ...claudeArgs(bridge.mcpConfigPath)], {
+        proc = spawn(file, [...before, ...claudeArgs(bridge.mcpConfigPath, resumeSessionId)], {
           cwd,
           env: agentEnv(options.env ?? process.env, toolTimeoutMs),
           stdio: ['pipe', 'pipe', 'pipe'],

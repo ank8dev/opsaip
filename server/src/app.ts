@@ -45,7 +45,7 @@ const PATH_PARAM = /^[A-Za-z0-9_-]{1,100}$/;
  *   POST /v1/ask      { question } -> 200 { answer, action } | 400 | 413 | 415 | 429 | 502 | 503 | 504
  *   POST /v1/tasks    { title, agent? } -> 201 { task } | 400 | 409 | 413 | 415
  *   GET  /v1/tasks    200 { tasks }
- *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id, POST /v1/runs/:id/{permission,message,cancel}:
+ *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id[/transcript], POST /v1/runs/:id/{permission,message,cancel}:
  *                     Conductor mode, see auth/conductor/conductorRoutes.ts
  *   GET  /healthz     200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)

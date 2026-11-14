@@ -165,6 +165,7 @@
 .op-note { font-family: var(--op-sans); }
 .op-title { font-size: 15px; line-height: 24px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-fail .op-c4, .op-c4.op-flag { color: var(--op-error); }
+.op-n-fail { color: var(--op-error); }
 
 /* ===== Task card: an agent's chat, exported from Claude Code or Codex ===== */
 .op-card-head { padding: 12px 20px 0; }

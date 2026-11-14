@@ -26,6 +26,11 @@ describe('claudeArgs', () => {
     ]);
   });
 
+  it('--resume <session id> only when continuing a session', () => {
+    expect(claudeArgs('/x', 'abc-123').slice(0, 2)).toEqual(['--resume', 'abc-123']);
+    expect(claudeArgs('/x')).not.toContain('--resume');
+  });
+
   it('never skips permissions', () => {
     const args = claudeArgs('/x').join(' ');
     expect(args).not.toContain('dangerously');
@@ -72,6 +77,7 @@ describe('createClaudeCliDriver with the fake agent', () => {
 
     expect(run.events).toEqual([
       { type: 'started' },
+      { type: 'session', sessionId: 'fake-session-0001' },
       { type: 'message', text: 'Looking at the code' },
       { type: 'result', ok: true, text: 'All done' },
       { type: 'exited', code: 0, signal: null, startFailed: false },

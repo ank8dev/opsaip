@@ -1,7 +1,7 @@
 // The real server process (src/main.ts) with OPSAIP_CONDUCTOR_DIR. No run is
 // started here: production runs the real `claude`, which these tests must
 // never do (runManager.test.ts covers runs with the fake agent).
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { freePort, spawnServer, stopServer, waitUntilListening, type ServerProcess } from '../../testServerProcess';
 import { cleanUp, makeRepo, tempDir } from './testing/conductorTestKit';
@@ -42,7 +42,7 @@ describe('startup with Conductor mode', { timeout: 30_000 }, () => {
     const server = spawn({ OPSAIP_PORT: String(port), OPSAIP_CONDUCTOR_DIR: repo });
     await waitUntilListening(server);
     const res = await fetch(`http://127.0.0.1:${port}/v1/conductor`, { headers: { authorization: `Bearer ${TOKEN}` } });
-    expect(await res.json()).toEqual({ enabled: true, agent: 'claude-code' });
+    expect(await res.json()).toEqual({ enabled: true, agent: 'claude-code', repo: basename(repo), active: false });
     expect(await stopServer(server)).toBe(0);
     expect(server.output()).toContain('Conductor mode is on');
     expect(server.output()).not.toContain(repo);

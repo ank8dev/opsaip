@@ -8,7 +8,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnyTask, ChatMessage, Link, LocalTask, Person, Task, ToolName, Workspace } from '../types';
 import { isLocal } from '../types';
-import { byImportance, byStatus, isImportant, mapState, peopleById, type TrayLevel } from '../data/selectors';
+import { byImportance, byStatus, mapState, peopleById } from '../data/selectors';
+import { attentionOf, type AttentionView } from '../data/attention';
 import {
   clearConnection, fetchTasks, loadConnection, loadWorkspace, saveConnection, serverWorkspace, type Connection,
 } from '../data/source';
@@ -43,9 +44,13 @@ interface WorkspaceValue {
   syncFlag: (taskId: string) => SyncFlag;
   linkNote: (taskId: string) => string;
   messagesFor: (t: AnyTask) => ChatMessage[];
-  /** Tasks waiting on a person: "Needs you", or tools that disagree. */
-  decisionTasks: () => AnyTask[];
-  attentionTasks: (level: TrayLevel) => AnyTask[];
+  /**
+   * What needs a person: waiting tasks and tasks with a pending permission
+   * request ("needs you"), and failed tasks. The one definition every count uses.
+   */
+  attention: AttentionView<AnyTask>;
+  /** Chat reports which tasks have a permission request nobody has answered. */
+  setPendingPermissionTasks: (ids: readonly string[]) => void;
 
   changeTask: (id: string, patch: Partial<Task>, msg?: ChatMessage) => void;
   addLocalTask: (t: LocalTask) => void;
@@ -177,16 +182,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [ws.transcripts, sentMessages],
   );
 
-  const decisionTasks = useCallback(() => {
-    const needs = (t: AnyTask) =>
-      t.status === 'Needs you' || (!isLocal(t) && t.status !== 'Done' && syncFlag(t.id) === 'conflict');
-    return [...shownLocal.filter(needs), ...tasks.filter(needs)].sort(byImportance);
-  }, [shownLocal, tasks, syncFlag]);
-
-  const attentionTasks = useCallback(
-    (level: TrayLevel) => decisionTasks().filter((t) => isImportant(t, level)),
-    [decisionTasks],
-  );
+  const [permissionTasks, setPermissionTasks] = useState<readonly string[]>([]);
+  const setPendingPermissionTasks = useCallback((ids: readonly string[]) => {
+    setPermissionTasks((old) => (old.length === ids.length && old.every((id, i) => id === ids[i]) ? old : ids));
+  }, []);
+  const attentionNow = useMemo<AttentionView<AnyTask>>(() => {
+    const view = attentionOf<AnyTask>([...shownLocal, ...tasks], permissionTasks);
+    return { needsYou: [...view.needsYou].sort(byImportance), failed: [...view.failed].sort(byImportance) };
+  }, [shownLocal, tasks, permissionTasks]);
 
   // ---- actions ----
 
@@ -269,7 +272,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const value: WorkspaceValue = {
     ws, source, readOnly, connect, disconnect, ask, api, people, tasks, localTasks: shownLocal, allTasks, findTask, linksFor, syncFlag,
     linkNote: (id) => linkNotes[id] ?? '',
-    messagesFor, decisionTasks, attentionTasks,
+    messagesFor, attention: attentionNow, setPendingPermissionTasks,
     changeTask, addLocalTask, addMessage, resolveConflict, linkSuggestion, dismissSuggestion,
   };
 
