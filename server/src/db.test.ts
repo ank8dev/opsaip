@@ -54,7 +54,7 @@ describe('openDatabase', () => {
 
   it('creates an empty tasks table and sets the schema version', () => {
     const db = openDatabase(join(dir, 'opsaip.db'));
-    expect(SCHEMA_VERSION).toBe(3);
+    expect(SCHEMA_VERSION).toBe(4);
     expect(userVersion(db)).toBe(SCHEMA_VERSION);
     expect(db.prepare('SELECT * FROM tasks').all()).toEqual([]);
     expect(columnsOf(db)).toEqual(COLUMNS_V3);
@@ -228,8 +228,7 @@ describe('migration from version 2 to 3', () => {
     const path = join(dir, 'opsaip.db');
     createVersion2Database(path, rows);
     const db = openDatabase(path);
-    expect(SCHEMA_VERSION).toBe(3);
-    expect(userVersion(db)).toBe(3);
+    expect(userVersion(db)).toBe(SCHEMA_VERSION);
     expect(columnsOf(db)).toEqual(COLUMNS_V3);
     db.close();
   });
@@ -270,9 +269,110 @@ describe('migration from version 2 to 3', () => {
     createVersion2Database(path, rows);
     openDatabase(path).close();
     const again = openDatabase(path);
-    expect(userVersion(again)).toBe(3);
+    expect(userVersion(again)).toBe(SCHEMA_VERSION);
     expect(columnsOf(again)).toEqual(COLUMNS_V3);
     expect(again.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
     again.close();
+  });
+});
+
+/**
+ * A database exactly as the version 3 server left it (SQL copied on purpose,
+ * like createVersion1Database: do not change it when the schema moves on).
+ */
+function createVersion3Database(path: string): void {
+  const v3 = new DatabaseSync(path);
+  v3.exec(`
+    BEGIN;
+    CREATE TABLE tasks (
+      seq        INTEGER PRIMARY KEY,
+      id         TEXT    NOT NULL UNIQUE,
+      status     TEXT    NOT NULL,
+      updated_at TEXT    NOT NULL,
+      title      TEXT,
+      agent      TEXT,
+      note       TEXT,
+      source     TEXT
+    ) STRICT;
+    INSERT INTO tasks (id, status, updated_at, title, source) VALUES
+      ('zeta', 'running', '2026-11-01T10:05:00Z', 'Old task', 'you'),
+      ('alpha', 'queued', '2026-11-01T10:00:00Z', NULL, NULL);
+    PRAGMA user_version = 3;
+    COMMIT;
+  `);
+  v3.close();
+}
+
+const tablesOf = (db: DatabaseSync) =>
+  (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as { name: string }[]).map(
+    (t) => t.name,
+  );
+
+describe('migration from version 3 to 4', () => {
+  it('adds the chat tables and keeps the tasks', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion3Database(path);
+    const db = openDatabase(path);
+    expect(SCHEMA_VERSION).toBe(4);
+    expect(userVersion(db)).toBe(4);
+    expect(tablesOf(db)).toEqual(['chat_messages', 'chats', 'tasks']);
+    expect(db.prepare('SELECT id, title, source FROM tasks ORDER BY seq').all()).toEqual([
+      { id: 'zeta', title: 'Old task', source: 'you' },
+      { id: 'alpha', title: null, source: null },
+    ]);
+    expect(db.prepare('SELECT * FROM chats').all()).toEqual([]);
+    db.close();
+  });
+
+  it('runs once: opening the migrated file again changes nothing', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion3Database(path);
+    openDatabase(path).close();
+    const again = openDatabase(path);
+    expect(userVersion(again)).toBe(4);
+    expect(again.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
+    again.close();
+  });
+
+  it('refuses a version newer than 4 and leaves the file alone', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion3Database(path);
+    const newer = new DatabaseSync(path);
+    newer.exec('PRAGMA user_version = 5');
+    newer.close();
+    expect(() => openDatabase(path)).toThrow(/schema version 5 is not supported/);
+    const check = new DatabaseSync(path);
+    expect(userVersion(check)).toBe(5);
+    expect(tablesOf(check)).toEqual(['tasks']);
+    check.close();
+  });
+});
+
+describe('chat tables', () => {
+  const addChat = (db: DatabaseSync, id: string) =>
+    db.prepare('INSERT INTO chats (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)').run(id, 't', 'x', 'x');
+  const addMessage = (db: DatabaseSync, chatId: string, seq: number, role = 'you') =>
+    db
+      .prepare('INSERT INTO chat_messages (chat_id, seq, role, text, widget, at) VALUES (?, ?, ?, ?, NULL, ?)')
+      .run(chatId, seq, role, 'hi', 'x');
+
+  it('deletes the messages of a chat with the chat (foreign keys are on)', () => {
+    const db = openDatabase(join(dir, 'opsaip.db'));
+    addChat(db, 'c1');
+    addChat(db, 'c2');
+    addMessage(db, 'c1', 0);
+    addMessage(db, 'c1', 1);
+    addMessage(db, 'c2', 0);
+    db.prepare('DELETE FROM chats WHERE id = ?').run('c1');
+    expect(db.prepare('SELECT chat_id, seq FROM chat_messages').all()).toEqual([{ chat_id: 'c2', seq: 0 }]);
+    db.close();
+  });
+
+  it('rejects a message for a chat that does not exist, and a bad role', () => {
+    const db = openDatabase(':memory:');
+    expect(() => addMessage(db, 'nope', 0)).toThrow(/FOREIGN KEY/);
+    addChat(db, 'c1');
+    expect(() => addMessage(db, 'c1', 0, 'admin')).toThrow(/CHECK/);
+    db.close();
   });
 });

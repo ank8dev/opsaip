@@ -166,7 +166,7 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
 | `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
-| `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
+| `POST /v1/ask`      | Body: `{ "question": "...", "history": [{ "role": "you"\|"opsy", "text": "..." }] }` (`history` optional, see [Ask](#ask-optional)). 200 `{ "answer" }`; 400 bad question or history; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
 | `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `reason` (only when off) says how to turn Conductor mode on.        |
 | `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "..." }`. Starts a [Conductor](#conductor-mode-experimental) run. 201 `{ "run" }`; 400 invalid input; 409 a run is already active; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
 | `GET /v1/runs/:id`  | 200 `{ "run" }`; 404 unknown run; 503 off                                                                                           |
@@ -174,6 +174,12 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/runs/:id/permission` | Body: `{ "allow": true, "permissionId": "..." }`. Answers the run's pending permission request. 200 `{ "run" }`; 400; 404; 409 no pending request with that id, or the run has ended; 413; 415; 503 |
 | `POST /v1/runs/:id/message` | Body: `{ "text": "..." }`. A follow-up while the run is active; to a finished run whose Claude Code has exited it resumes the same session in the same worktree (`claude -p --resume <session id>`). 200 `{ "run" }`; 400; 404; 409 not active and not resumable (no session id, still shutting down), or another run is active; 413; 415; 503 |
 | `POST /v1/runs/:id/cancel` | No body. Stops the run. 200 `{ "run" }`; 404; 409 the run has already ended; 503                                       |
+| `GET /v1/chats`     | 200 `{ "chats": [{ "id", "title", "createdAt", "updatedAt", "messageCount" }] }`, most recently updated first. See [Chats](#chats). |
+| `POST /v1/chats`    | Body: `{ "title": "..." }` (optional, default `New chat`). 201 `{ "chat" }`; 400; 413; 415                                          |
+| `PATCH /v1/chats/:id` | Body: `{ "title": "..." }`. 200 `{ "chat" }`; 400; 404; 413; 415                                                                  |
+| `DELETE /v1/chats/:id` | 204 (its messages are deleted too); 404                                                                                          |
+| `GET /v1/chats/:id/messages` | 200 `{ "messages": [{ "id", "role": "you"\|"opsy", "text", "widget": object\|null, "at" }] }` in order; 404                  |
+| `PUT /v1/chats/:id/messages` | Body: `{ "messages": [{ "role", "text", "widget"? }] }`. Replaces all messages of the chat. 200 `{ "chat" }`; 400; 404; 413 over 1 MB; 415 |
 | `GET /healthz`      | 200 `ok`                                                                                                                           |
 | `GET /`             | The web app (from `OPSAIP_WEB_DIR`), with a strict Content-Security-Policy. 404 when it is not built.                             |
 
@@ -218,11 +224,35 @@ curl -H "authorization: Bearer $OPSAIP_TOKEN" -H 'content-type: application/json
 ```
 
 The database schema version is kept in SQLite's `user_version`. A database from an older
-server is upgraded on start, in one transaction; one from a newer server is refused.
+server is upgraded on start, in one transaction; one from a newer server is refused. Each change
+is a new migration step at the end of the list in `server/src/db.ts`; a step that has shipped is
+never edited. Version 4 adds the `chats` and `chat_messages` tables for [Chats](#chats); a
+version 3 database keeps all its tasks. Foreign keys are on, so deleting a chat deletes its messages.
 
 Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
 On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is
 expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
+
+## Chats
+
+The Ask screen keeps its conversations on the server, so they survive a reload and are the same
+in every browser that has the token. They are stored **in plain text, as questions and answers,
+in the server's SQLite database** (`OPSAIP_DB`): anyone who can read that file can read your
+chats, so protect it like the task data. The server never logs chat content.
+
+- A chat is `{ "id", "title", "createdAt", "updatedAt", "messageCount" }`. The id is a random UUID.
+  A title is trimmed, 1 to 80 characters, with no control characters.
+- `PUT /v1/chats/:id/messages` replaces the whole conversation in one transaction (a bad request
+  leaves the old messages as they were) and sets `updatedAt`. At most 200 messages; `text` at most
+  4000 characters; `widget` (optional) is an opaque JSON object of at most 20 000 characters once
+  serialized. The server stores it and hands it back, and never interprets or renders it. Over a
+  limit is 400; the body itself may be up to 1 MB (413 above that), a limit that applies to this
+  route only (the others stay at 16 KB). The message `id` is its position, from 0.
+- At most 200 chats are kept: creating the 201st deletes the least recently updated one, with its
+  messages.
+
+Chats are for the web app's history only. Stored chats are never read for Ask: the app sends the
+last messages of the chat on screen with the question, see [Ask](#ask-optional).
 
 ## Ask (optional)
 
@@ -232,6 +262,14 @@ from that data, to say plainly when it does not know, and never to invent tasks,
 numbers. Models can still make mistakes: check important answers against the tasks.
 
 When Ask is on, your questions and your commands to agents are sent to Google Gemini.
+
+A question may carry `"history"`: the last messages of the chat on screen, at most 6, as
+`[{ "role": "you" | "opsy", "text": "..." }]` with at most 1000 characters each (otherwise 400).
+They go to the provider inside a `<conversation>` block, as context for questions like "and the
+other one?", and the model is told they are data, not instructions, and that answers must still
+come only from the task data. **Only those messages of the current chat go to the provider.** The
+server never reads stored chats for Ask, so no other chat can reach it. Like questions and
+answers, history is never logged (only the number of messages).
 
 The model replies with JSON, which the server checks strictly. The response is
 `200 { "answer": "...", "action": null }`, or with a proposal in `action`:

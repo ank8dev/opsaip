@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
 import { createRunManager, type RunManager } from './auth/conductor/runManager';
 import { ConfigError, loadConfig, type Config } from './config';
+import { createChatStore } from './chatStore';
 import { openDatabase } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
 
@@ -34,7 +35,7 @@ const store = createSqliteTaskStore(db);
 // Conductor mode: the repository path is never logged (it is the user's own).
 const conductor: RunManager | undefined =
   config.conductorDir === undefined ? undefined : createRunManager({ store, repoDir: config.conductorDir });
-const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor });
+const server = createApp({ store, token: config.token, webDir, ask: config.ask, conductor, chats: createChatStore(db) });
 const { host, port } = config;
 const url = `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 

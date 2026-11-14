@@ -10,6 +10,8 @@ import { createApp, type AppOptions } from './app';
 import type { AskPrompt, AskProvider } from './auth/askProvider';
 import { ProviderError } from './auth/askProvider';
 import { askProviderFromEnv } from './auth/llm';
+import { createChatStore } from './chatStore';
+import { openDatabase } from './db';
 
 const TOKEN = 'ask-test-token-0123456789abcdef0123456789';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
@@ -78,6 +80,53 @@ describe('POST /v1/ask', () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0].user).toContain('"title":"Fix login"');
     expect(prompts[0].user).toContain('What is running?');
+  });
+
+  it('puts the history from the body in the prompt, and nothing else: no stored chat', async () => {
+    const { provider, prompts } = fakeProvider(async () => 'ok');
+    const chats = createChatStore(openDatabase(':memory:'));
+    const other = chats.create('Secret other chat');
+    chats.replaceMessages(other.id, [{ role: 'you', text: 'TOP-SECRET-OTHER-CHAT', widget: '{"k":"WIDGET-SECRET"}' }]);
+    await start({ ask: provider, chats });
+
+    const history = [
+      { role: 'you', text: 'What is running?' },
+      { role: 'opsy', text: 'Fix login.' },
+    ];
+    expect((await ask({ question: 'and then?', history })).status).toBe(200);
+    expect((await ask({ question: 'plain question' })).status).toBe(200);
+
+    expect(prompts[0].user).toContain('<conversation>');
+    expect(prompts[0].user).toContain('"text":"Fix login."');
+    expect(prompts[1].user).not.toContain('conversation');
+    for (const prompt of prompts) {
+      for (const text of [prompt.system, prompt.user]) {
+        expect(text).not.toContain('TOP-SECRET-OTHER-CHAT');
+        expect(text).not.toContain('WIDGET-SECRET');
+        expect(text).not.toContain('Secret other chat');
+      }
+    }
+  });
+
+  it('400 for a bad history; the model is not called', async () => {
+    const { provider, prompts } = fakeProvider(async () => 'never');
+    await start({ ask: provider });
+    const seven = Array.from({ length: 7 }, () => ({ role: 'you', text: 'x' }));
+    for (const history of [seven, [{ role: 'you', text: 'a'.repeat(1001) }], [{ role: 'bot', text: 'x' }], 'x', {}]) {
+      const res = await ask({ question: 'q', history });
+      expect(res.status, JSON.stringify(history).slice(0, 40)).toBe(400);
+      expect(await res.json()).toEqual({ error: expect.stringContaining('history') });
+    }
+    expect(prompts).toHaveLength(0);
+  });
+
+  it('logs only the number of history messages, never their text', async () => {
+    const lines: string[] = [];
+    const { provider } = fakeProvider(async () => 'The SECRET-ANSWER');
+    await start({ ask: provider, log: (line) => lines.push(line) });
+    await ask({ question: 'q', history: [{ role: 'you', text: 'SECRET-HISTORY' }] });
+    expect(lines.join('\n')).toContain('1 history messages');
+    expect(lines.join('\n')).not.toContain('SECRET');
   });
 
   it('503 with how to set it up when Ask is not configured', async () => {
