@@ -18,7 +18,7 @@ const ASK_TIMEOUT_MS = 30_000;
  * the server's Ask, and the answer replaces a "waiting" message.
  */
 export function useChat() {
-  const { allTasks, people, readOnly, source, ask, api, changeTask, findTask } = useWorkspace();
+  const { allTasks, people, readOnly, source, ask, api, changeTask, findTask, setPendingPermissionTasks } = useWorkspace();
   const ui = useUi();
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -52,6 +52,20 @@ export function useChat() {
     },
     [ui, say, push, patch, requests.request, api],
   );
+
+  // Tell the sidebar and the bar which runs wait for your Allow or Deny.
+  useEffect(() => {
+    const taskOf = new Map<string, string>();
+    for (const m of messages) if (m.from === 'opsy' && m.widget.kind === 'run') taskOf.set(m.widget.runId, m.widget.taskId);
+    const ids: string[] = [];
+    for (const m of messages) {
+      if (m.from !== 'opsy' || m.widget.kind !== 'permission' || m.widget.state !== 'pending') continue;
+      const id = taskOf.get(m.widget.runId);
+      if (id !== undefined && !ids.includes(id)) ids.push(id);
+    }
+    setPendingPermissionTasks(ids);
+  }, [messages, setPendingPermissionTasks]);
+  useEffect(() => () => setPendingPermissionTasks([]), [setPendingPermissionTasks]);
 
   // Leaving the page stops a question that is still on its way.
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);

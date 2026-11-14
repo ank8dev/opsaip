@@ -13,13 +13,6 @@ export const prioOf = (t: Task) => (t.priority ? PRIO[t.priority] : 2);
 export const byImportance = (a: Task, b: Task) =>
   prioOf(a) - prioOf(b) || String(a.since ?? '').localeCompare(String(b.since ?? ''));
 
-/** What reaches the attention tray, set in Settings → Notifications. */
-export type TrayLevel = 'urgent' | 'high' | 'all';
-export function isImportant(t: Task, level: TrayLevel): boolean {
-  const p = prioOf(t);
-  return level === 'all' || (level === 'urgent' ? p === 0 : p <= 1);
-}
-
 // ---- Lookups ----
 
 export function peopleById(team: Person[]): Record<string, Person> {

@@ -4,7 +4,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ToolName } from '../types';
-import type { TrayLevel } from '../data/selectors';
 import { readMotionTokens, type MotionTokens } from '../styles/motion';
 
 export type Section = 'chat' | 'agents' | 'team' | 'mcp' | 'repo';
@@ -24,8 +23,6 @@ interface UiValue {
   setUserName: (n: string) => void;
   statusOwner: ToolName;
   setStatusOwner: (t: ToolName) => void;
-  trayLevel: TrayLevel;
-  setTrayLevel: (l: TrayLevel) => void;
 
   /** The open sidebar section. 'chat' is the main screen: the sidebar then shows its list of sections. */
   section: Section;
@@ -109,7 +106,6 @@ export function UiProvider({ children }: { children: ReactNode }) {
 
   const [userName, setUserName] = useState('You');
   const [statusOwner, setStatusOwner] = useState<ToolName>('GitHub');
-  const [trayLevel, setTrayLevel] = useState<TrayLevel>('high');
   const [section, setSection] = useState<Section>('chat');
   const [query, setQuery] = useState('');
   const [trayOpen, setTrayOpen] = useState(false);
@@ -135,12 +131,12 @@ export function UiProvider({ children }: { children: ReactNode }) {
       theme, themeChoice, setThemeChoice,
       toggleTheme: () => setThemeChoice(theme === 'dark' ? 'light' : 'dark'),
       motionChoice, setMotionChoice, motion,
-      userName, setUserName, statusOwner, setStatusOwner, trayLevel, setTrayLevel,
+      userName, setUserName, statusOwner, setStatusOwner, 
       section, setSection, query, setQuery,
       trayOpen, setTrayOpen, openTaskId, openTask, closeTask, settingsOpen, setSettingsOpen,
       hint, flashHint,
     }),
-    [theme, themeChoice, setThemeChoice, motionChoice, motion, userName, statusOwner, trayLevel,
+    [theme, themeChoice, setThemeChoice, motionChoice, motion, userName, statusOwner,
       section, query, trayOpen, openTaskId, openTask, closeTask, settingsOpen, hint, flashHint],
   );
 
