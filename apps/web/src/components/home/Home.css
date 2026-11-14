@@ -12,18 +12,6 @@
 .op-col[data-tray="open"] .op-thread,
 .op-col[data-tray="open"] .op-chips { display: none; }
 
-/* An open task: the window above the composer grows to the top */
-.op-col[data-mode="card"] { gap: 0; }
-.op-col[data-mode="card"] .op-thread,
-.op-col[data-mode="card"] .op-chips,
-.op-col[data-mode="card"] .op-tray-bar,
-.op-col[data-mode="card"] .op-tray-body { display: none; }
-.op-col[data-mode="card"] .op-composer-wrap,
-.op-col[data-mode="card"] .op-tray,
-.op-col[data-mode="card"] .op-card,
-.op-col[data-mode="card"] .op-card-chat { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-.op-col[data-mode="card"] .op-card-scroll { flex: 1 1 0; min-height: 0; max-height: none; }
-
 /* ===== Composer: a lime beam runs around the border, a soft glow underneath ===== */
 .op-glowbox { position: relative; isolation: isolate; z-index: 1; }
 .op-glowbox::after {
@@ -168,10 +156,6 @@
 .op-n-fail { color: var(--op-error); }
 
 /* ===== Task card: an agent's chat, exported from Claude Code or Codex ===== */
-.op-card-head { padding: 12px 20px 0; }
-.op-card-head .op-back { grid-column: 1; }
-.op-card-head .op-title { grid-column: 2; }
-.op-card-head .op-c4 { display: flex; align-items: center; gap: 4px; }
 .op-card-dot { width: 16px; height: 16px; }
 .op-card-meta { padding: 0 20px 0 56px; font-family: var(--op-mono); font-size: 12px; line-height: 20px; color: var(--op-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .op-chat { padding: 12px 20px 8px 56px; display: flex; flex-direction: column; gap: 12px; }

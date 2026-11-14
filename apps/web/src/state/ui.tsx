@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ToolName } from '../types';
 import { readMotionTokens, type MotionTokens } from '../styles/motion';
+import { createOverlayHistory } from '../lib/overlayHistory';
 
 export type Section = 'chat' | 'agents' | 'team' | 'mcp' | 'repo';
 export type ThemeChoice = 'system' | 'light' | 'dark';
@@ -112,11 +113,22 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // The task window is an overlay: the browser's back button closes it (lib/overlayHistory.ts).
+  const overlayHistory = useRef(createOverlayHistory(window.history)).current;
   const openTask = useCallback((id: string) => {
     setSettingsOpen(false);
     setOpenTaskId(id);
-  }, []);
-  const closeTask = useCallback(() => setOpenTaskId(null), []);
+    overlayHistory.opened();
+  }, [overlayHistory]);
+  const closeTask = useCallback(() => {
+    setOpenTaskId(null);
+    overlayHistory.closed();
+  }, [overlayHistory]);
+  useEffect(() => {
+    const onPop = () => { if (overlayHistory.popped()) setOpenTaskId(null); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [overlayHistory]);
 
   const [hint, setHint] = useState({ text: '', flash: false });
   const hintTimer = useRef(0);

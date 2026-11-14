@@ -36,6 +36,7 @@
   --op-glow-opacity: 0.10;
   --op-glow-opacity-focus: 0.13;
   --op-shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.28);
+  --op-scrim: rgba(0, 0, 0, 0.55);
 
   /* ---- Type ---- */
   --op-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -85,6 +86,7 @@
   --op-ring-base: #D4D4D4;
   --op-ring-focus: #9A9A9A;
   --op-halo: rgba(17, 17, 17, 0.05);
+  --op-scrim: rgba(17, 17, 17, 0.38);
   --op-beam: #C8F03C;
   --op-beam-tip: #C8F03C;
   --op-glow: #C8F03C;
