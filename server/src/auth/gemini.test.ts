@@ -53,6 +53,22 @@ describe('Gemini provider', () => {
     expect(String(init?.body)).not.toContain(KEY);
   });
 
+  it('with a response schema, asks for JSON output; the key stays out of the body', async () => {
+    const schema = { type: 'OBJECT', properties: { answer: { type: 'STRING' } } };
+    const fetchFn = fakeFetch(200, answered({ text: '{"answer":"x","action":null}' }));
+    const provider = createGeminiProvider(KEY, MODEL, fetchFn);
+    await provider.answer({ ...PROMPT, responseSchema: schema }, new AbortController().signal);
+    const [, init] = fetchFn.mock.calls[0];
+    expect(JSON.parse(String(init?.body)).generationConfig).toEqual({
+      temperature: 0.2,
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      responseMimeType: 'application/json',
+      responseSchema: schema,
+    });
+    expect(String(init?.body)).not.toContain(KEY);
+    expect(init?.headers).toEqual({ 'content-type': 'application/json', 'x-goog-api-key': KEY });
+  });
+
   it('joins the text parts and leaves out thought parts', async () => {
     const fetchFn = fakeFetch(200, answered({ text: 'thinking...', thought: true }, { text: 'One ' }, { text: 'task. ' }));
     expect(await createGeminiProvider(KEY, MODEL, fetchFn).answer(PROMPT, new AbortController().signal)).toBe(

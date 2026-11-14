@@ -166,7 +166,7 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/reports`  | Body: a status report as JSON. 200 `{ "task" }`; 400 invalid input; 409 rejected by the task store; 413 over 16 KB; 415 not `application/json` |
 | `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
-| `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer" }`; 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
+| `POST /v1/ask`      | Body: `{ "question": "..." }`. 200 `{ "answer", "action" }` (`action` is `null` or a run/task proposal); 400 bad question; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
 | `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `reason` (only when off) says how to turn Conductor mode on.        |
 | `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "..." }`. Starts a [Conductor](#conductor-mode-experimental) run. 201 `{ "run" }`; 400 invalid input; 409 a run is already active; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
 | `GET /v1/runs/:id`  | 200 `{ "run" }`; 404 unknown run; 503 off                                                                                           |
@@ -229,6 +229,17 @@ expected in the alpha: `node:sqlite` is still marked experimental in Node 22.
 API key. The model sees only what the server knows about the tasks and is told to answer only
 from that data, to say plainly when it does not know, and never to invent tasks, people or
 numbers. Models can still make mistakes: check important answers against the tasks.
+
+When Ask is on, your questions and your commands to agents are sent to Google Gemini.
+
+The model replies with JSON, which the server checks strictly. The response is
+`200 { "answer": "...", "action": null }`, or with a proposal in `action`:
+`{ "type": "run", "agent": "claude-code", "title": "...", "prompt": "..." }` (same limits as
+`POST /v1/runs`) or `{ "type": "task", "title": "..." }` (same limits as `POST /v1/tasks`).
+`action` is only a proposal: the server never runs it. The app's Approve button then calls
+`POST /v1/runs` or `POST /v1/tasks`. Unknown fields are dropped; a reply that is not valid JSON is
+returned as plain text with `action: null`; an invalid action is dropped and the answer is kept;
+a run for any agent other than Claude Code answers "Only Claude Code is available in v0.1.".
 
 > **Your task data leaves your server.** Each question sends the question and the tasks'
 > title, status, agent, note and last update time to the provider you choose (Google, for

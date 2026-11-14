@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createTaskStore } from '@opsaip/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ASK_RESPONSE_SCHEMA } from './askIntent';
 import { ASK_RATE_LIMIT, MAX_QUESTION_CHARS, NOT_CONFIGURED } from './ask';
 import { createApp, type AppOptions } from './app';
 import type { AskPrompt, AskProvider } from './auth/askProvider';
@@ -70,7 +71,7 @@ describe('POST /v1/ask', () => {
     const res = await ask({ question: 'What is running?' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8');
-    expect(await res.json()).toEqual({ answer: 'One task: Fix login, running on claude-code.' });
+    expect(await res.json()).toEqual({ answer: 'One task: Fix login, running on claude-code.', action: null });
 
     expect(prompts).toHaveLength(1);
     expect(prompts[0].user).toContain('"title":"Fix login"');
@@ -135,6 +136,64 @@ describe('POST /v1/ask', () => {
       await once(server!, 'close');
       server = undefined;
     }
+  });
+
+  it('asks the model for JSON with the response schema', async () => {
+    const { provider, prompts } = fakeProvider(async () => '{"answer":"x","action":null}');
+    await start({ ask: provider });
+    await ask({ question: 'q' });
+    expect(prompts[0].responseSchema).toBe(ASK_RESPONSE_SCHEMA);
+  });
+
+  it('returns a run proposal from the model JSON, dropping unknown fields, and runs nothing', async () => {
+    const reply = JSON.stringify({
+      answer: 'I will fix the login bug with Claude Code.',
+      extra: 1,
+      action: { type: 'run', title: ' Fix login ', prompt: 'Fix the login bug', agent: 'Claude Code', cmd: 'rm -rf /' },
+    });
+    const { provider } = fakeProvider(async () => reply);
+    await start({ ask: provider });
+    const res = await ask({ question: 'fix login with claude' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      answer: 'I will fix the login bug with Claude Code.',
+      action: { type: 'run', agent: 'claude-code', title: 'Fix login', prompt: 'Fix the login bug' },
+    });
+    const tasks = (await (await fetch(`${base}/v1/tasks`, { headers: AUTH })).json()) as { tasks: unknown[] };
+    expect(tasks.tasks).toHaveLength(1); // nothing was created
+  });
+
+  it('returns a task proposal', async () => {
+    const { provider } = fakeProvider(async () =>
+      JSON.stringify({ answer: 'I propose a task.', action: { type: 'task', title: 'Write docs', prompt: 'ignored' } }),
+    );
+    await start({ ask: provider });
+    expect(await (await ask({ question: 'add a task' })).json()).toEqual({
+      answer: 'I propose a task.',
+      action: { type: 'task', title: 'Write docs' },
+    });
+  });
+
+  it('another agent gets the v0.1 message and no action', async () => {
+    const { provider } = fakeProvider(async () =>
+      JSON.stringify({ answer: 'ok', action: { type: 'run', title: 't', prompt: 'p', agent: 'codex' } }),
+    );
+    await start({ ask: provider });
+    expect(await (await ask({ question: 'run codex' })).json()).toEqual({
+      answer: 'Only Claude Code is available in v0.1.',
+      action: null,
+    });
+  });
+
+  it('an invalid action keeps the answer; non-JSON becomes the plain answer', async () => {
+    const replies = [
+      JSON.stringify({ answer: 'Fine.', action: { type: 'run', title: 'x'.repeat(201), prompt: 'p' } }),
+      '  just text, not JSON  ',
+    ];
+    const { provider } = fakeProvider(async () => replies.shift()!);
+    await start({ ask: provider });
+    expect(await (await ask({ question: 'a' })).json()).toEqual({ answer: 'Fine.', action: null });
+    expect(await (await ask({ question: 'b' })).json()).toEqual({ answer: 'just text, not JSON', action: null });
   });
 
   it('cuts a very long answer', async () => {
