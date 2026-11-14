@@ -290,6 +290,41 @@ The server logs one line per question with the status code, counts and duration,
 question, the answer or the key. The answer is plain text written by a model from data agents
 sent: a client must show it as text, never as HTML.
 
+### Attaching files
+
+A question, a Conductor run and a follow-up to a run can come with up to **5 files**: images
+(png, jpg, webp, gif), video (mp4, mov, webm), PDF, and text or code files (txt, md, json, yaml,
+yml, toml, csv, log, py, js, ts, tsx, jsx, java, go, rs, rb, sh, c, h, cpp, css and a few more).
+SVG, HTML, archives and executables are never accepted. The type is decided from the file's
+content, not its name: a `.png` that is not a PNG is refused. `GET /v1/capabilities` lists what
+each of Ask and Agent mode accepts, with size limits; the web app shows exactly that.
+
+The app uploads each file first (`POST /v1/uploads?purpose=ask|agent`, the raw file as the body,
+the name in `X-Filename`), gets an id, and sends the ids as `"attachments"` in `POST /v1/ask`,
+`POST /v1/runs` or `POST /v1/runs/:id/message`. An upload is bound to its purpose, waits at most
+15 minutes in the server's memory (256 MB in all), and is forgotten when it is used, when the
+person removes it (`DELETE /v1/uploads/:id`), when it expires and when the server restarts. It is
+never written to disk by Ask, and neither its name nor its content is ever logged.
+
+- **Ask.** The files are sent, with the question and the task data, to the provider you
+  configured: **Google Gemini** when `OPSAIP_LLM_PROVIDER=gemini`. They leave your machine; the
+  Gemini free-tier warning above applies to them too. Each provider declares what it takes: Gemini
+  here takes png, jpg and webp images, mp4, mov and webm video, PDF and text, sent inline, up to 14
+  MB for all files of a question (the Gemini API limits a whole inline request to 20 MB; see
+  [files](https://ai.google.dev/gemini-api/docs/files),
+  [images](https://ai.google.dev/gemini-api/docs/image-understanding),
+  [video](https://ai.google.dev/gemini-api/docs/video-understanding),
+  [documents](https://ai.google.dev/gemini-api/docs/document-processing)). Per file: images 7 MB,
+  text 1 MB, PDF and video 14 MB.
+- **Agent mode.** The files are saved inside the run's git worktree, in
+  `.opsaip/attachments/<run id>/`, under generated names, and the prompt the agent gets ends with
+  a blank line, `Attached files:` and one `- .opsaip/attachments/<run id>/<name>` line per file.
+  Nothing is written outside the worktree. The files stay with the worktree (Opsaip never deletes
+  one) and stay out of `git status` through the repository's `.git/info/exclude`. Limits: images,
+  PDF and text 20 MB, video 100 MB, 200 MB for all files of a message. They reach whichever agent
+  runs, not only Claude Code. `GET /v1/runs/:id/transcript` entries can carry `attachments`
+  (`name`, `kind`, `size`) for the Chat tab; the entry's `text` is what the person typed.
+
 ## Conductor mode (experimental)
 
 Conductor mode lets Opsaip start a coding agent on your own Mac, on one of your git repositories,

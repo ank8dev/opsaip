@@ -7,6 +7,8 @@ import type { AskProvider } from './auth/askProvider';
 import { conductorRoutes, type RouteHandler } from './auth/conductor/conductorRoutes';
 import type { RunManager } from './auth/conductor/runManager';
 import { createRequestGuard, webFileForPath } from './auth/requestGuard';
+import { createUploadStore, type UploadStore } from './auth/uploads/uploadStore';
+import { uploadRoutes } from './auth/uploads/uploadRoutes';
 import { readWebFile } from './webFiles';
 
 /** Largest request body accepted, in bytes (16 KB). */
@@ -27,6 +29,8 @@ export interface AppOptions {
    * mode is off: GET /v1/conductor says so and the /v1/runs paths answer 503.
    */
   conductor?: RunManager;
+  /** Where uploaded files wait (auth/uploads). Defaults to a new in-memory store; tests pass their own. */
+  uploads?: UploadStore;
   /** Called for unexpected errors (they become 500). Defaults to console.error. */
   logError?: (message: string, error: unknown) => void;
   /** One line per /v1/ask request: status and counts only. Defaults to console.log. */
@@ -47,7 +51,8 @@ const PATH_PARAM = /^[A-Za-z0-9_-]{1,100}$/;
  *   GET  /v1/tasks    200 { tasks }
  *   GET  /v1/conductor, POST /v1/runs, GET /v1/runs/:id[/transcript], POST /v1/runs/:id/{permission,message,cancel}:
  *                     Conductor mode, see auth/conductor/conductorRoutes.ts
- *   GET  /healthz     200 "ok"
+ *   GET  /v1/capabilities, POST /v1/uploads, DELETE /v1/uploads/:id: file attachments, see auth/uploads/uploadRoutes.ts
+ *   GET  /healthz    200 "ok"
  *   GET  /, /index.html, /favicon.svg, /assets/<file>: the web app (also HEAD)
  *
  * Errors are JSON: { "error": "<reason>" }. Unknown path -> 404, known path
@@ -68,6 +73,7 @@ export function createApp({
   ask,
   askTimeoutMs,
   conductor,
+  uploads = createUploadStore(),
   logError = defaultLogError,
   log = defaultLog,
 }: AppOptions): Server {
@@ -78,7 +84,7 @@ export function createApp({
   const answer =
     ask === undefined
       ? undefined
-      : createAskService({ provider: ask, tasks: () => store.all(), log, timeoutMs: askTimeoutMs });
+      : createAskService({ provider: ask, tasks: () => store.all(), log, timeoutMs: askTimeoutMs, uploads });
   const routes: Record<string, Record<string, Handler>> = {
     '/healthz': {
       GET: (_req, res) => sendText(res, 200, 'ok'),
@@ -132,7 +138,8 @@ export function createApp({
         sendJson(res, outcome.status, outcome.body, outcome.headers);
       },
     },
-    ...conductorRoutes({ manager: conductor, readJsonBody, sendJson }),
+    ...conductorRoutes({ manager: conductor, readJsonBody, sendJson, uploads }),
+    ...uploadRoutes({ store: uploads, ask, agentEnabled: conductor !== undefined, sendJson }),
   };
 
   /**
@@ -167,7 +174,7 @@ export function createApp({
     }
   }
 
-  return createServer((req, res) => {
+  const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
       logError('opsaip: unexpected error while handling a request', error);
       // The client gets no details: they could reveal internals.
@@ -175,6 +182,8 @@ export function createApp({
       else sendJson(res, 500, { error: 'internal error' });
     });
   });
+  server.on('close', () => uploads.close());
+  return server;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // Path only, query string ignored. Not new URL(req.url, base): it reads
