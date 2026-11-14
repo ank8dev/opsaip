@@ -2,7 +2,7 @@
 // The renderer calls step(dt) once per frame and reads frame() for the shader.
 //
 // Ported from the mascot lab (opsy-lab.html), cut down to the six states that
-// opsyFocus() can produce. Nothing here invents content: the eyes only change
+// opsyFocus() can produce, plus `hello` for the chat. Nothing here invents content: the eyes only change
 // shape, and the body only moves.
 //
 // Timing follows the brand's "Fluid" motion: every spring is tuned to settle in
@@ -111,6 +111,8 @@ export const POSES: Record<OpsyState, Pose> = {
   error: { ...BASE, lid: 0, tint: 1, flow: 0.6, blinks: false },
   // Arcs: closed, smiling eyes.
   done: { ...BASE, kind: [EYE.arc, EYE.arc], sep: 0.29, eyeS: 1.05, blinks: false },
+  // A wink: one open eye, one smiling arc, the head tilted a little. It greets you.
+  hello: { ...BASE, kind: [EYE.dot, EYE.arc], sep: 0.29, eyeS: 1.05, roll: -0.1, blinks: false },
   // Crosses, the glass dims, it barely floats.
   offline: { ...BASE, kind: [EYE.cross, EYE.cross], sep: 0.3, dim: 0.45, flow: 0.2, bob: 0.015, sink: -0.03, gaze: [0, 0], blinks: false },
 };
@@ -187,6 +189,7 @@ export class OpsyMotion {
     if (next === 'working') this.turn = p.yaw.v;
     if (next === 'question') { p.sy.vel += 1.6; p.sx.vel -= 1.0; p.py.vel += 1.4; }
     if (next === 'done') { p.py.vel += 3.2; p.sy.vel -= 1.8; p.sx.vel += 1.5; }
+    if (next === 'hello') { p.py.vel += 2.4; p.sy.vel -= 1.2; p.sx.vel += 1.0; }
     if (next === 'error') p.px.vel += 4.5;
     if (prev === 'error') p.sy.vel += 1.2;
   }

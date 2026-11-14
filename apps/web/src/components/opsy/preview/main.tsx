@@ -14,7 +14,7 @@ import type { OpsyState } from '../../../data/opsyFocus';
 import { Opsy } from '../Opsy';
 import { OpsyStill } from '../OpsyStill';
 
-const STATES: OpsyState[] = ['idle', 'working', 'question', 'done', 'error', 'offline'];
+const STATES: OpsyState[] = ['idle', 'working', 'question', 'done', 'error', 'offline', 'hello'];
 const SIZES = [24, 40, 96];
 
 function Preview() {

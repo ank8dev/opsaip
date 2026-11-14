@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OpsyState } from '../../data/opsyFocus';
 import { EYE, FLUID, OpsyMotion, POSES, rotation, stepSpring, stiffness, wrapAngle, type Spring } from './model';
 
-const STATES: OpsyState[] = ['idle', 'working', 'question', 'done', 'error', 'offline'];
+const STATES: OpsyState[] = ['idle', 'working', 'question', 'done', 'error', 'offline', 'hello'];
 
 /** A fixed "random" source, so blinks and glances are the same on every run. */
 const fixed = (x = 0.5) => () => x;
@@ -46,7 +46,7 @@ describe('springs follow Fluid (260 / 480 / 720 ms)', () => {
   });
 });
 
-describe('OpsyMotion: the six states', () => {
+describe('OpsyMotion: the states', () => {
   it.each(STATES)('%s: a new Opsy shows its own eyes at once', (state) => {
     const m = new OpsyMotion(state, FLUID, fixed());
     expect(m.eyes).toEqual(POSES[state].kind);
@@ -57,6 +57,28 @@ describe('OpsyMotion: the six states', () => {
     expect(POSES.done.kind).toEqual([EYE.arc, EYE.arc]);
     expect(POSES.offline.kind).toEqual([EYE.cross, EYE.cross]);
     for (const s of ['idle', 'working', 'error'] as const) expect(POSES[s].kind).toEqual([EYE.dot, EYE.dot]);
+  });
+
+  it('hello winks: one dot, one smiling arc, and no pose shares that pair', () => {
+    expect(POSES.hello.kind).toEqual([EYE.dot, EYE.arc]);
+    for (const s of STATES.filter((x) => x !== 'hello')) expect(POSES[s].kind).not.toEqual(POSES.hello.kind);
+    expect(POSES.hello.blinks).toBe(false); // a blink would hide the wink
+    const m = new OpsyMotion('hello', FLUID, fixed());
+    run(m, 1);
+    const f = m.frame();
+    expect(m.eyes).toEqual([EYE.dot, EYE.arc]);
+    expect(f.eyeL[3]).toBeGreaterThan(0.95);
+    expect(f.roll).toBeLessThan(0); // tilted the other way from the question
+  });
+
+  it('hello gives a small hop on entry and settles', () => {
+    const m = new OpsyMotion('idle', FLUID, fixed());
+    m.setState('hello');
+    let peak = 0;
+    for (let i = 0; i < 60; i++) { m.step(1 / 60); peak = Math.max(peak, m.frame().pos[1]); }
+    expect(peak).toBeGreaterThan(0.005);
+    run(m, 2);
+    expect(Math.abs(m.frame().pos[1])).toBeLessThan(0.05);
   });
 
   it('eyes swap behind a blink: closed first, then the new shape opens', () => {
