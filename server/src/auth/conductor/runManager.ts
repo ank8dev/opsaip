@@ -2,9 +2,10 @@
 // progress written to a task through the TaskStore like any agent report.
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, rmdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { MAX_NOTE_LENGTH, type AgentTaskStatus, type TaskStore } from '@opsaip/core';
 import { createClaudeCliDriver, withoutOpsaipVars } from './claudeCliDriver';
@@ -23,6 +24,12 @@ export const TOOL_TIMEOUT_MS = PERMISSION_TIMEOUT_MS + 2 * 60_000;
 export const MAX_LAST_MESSAGE_CHARS = 2000;
 /** Finished runs kept in memory for GET /v1/runs/:id (the server forgets them on restart). */
 export const KEPT_RUNS = 20;
+/** Longest text of one transcript entry, in UTF-16 code units. Longer text is cut. */
+export const MAX_ENTRY_CHARS = 8000;
+/** Most entries kept per run transcript. The oldest are dropped first. */
+export const MAX_TRANSCRIPT_ENTRIES = 200;
+/** Most text kept per run transcript, all entries together. The oldest entries are dropped first. */
+export const MAX_TRANSCRIPT_CHARS = 200_000;
 /** Where run worktrees go: ~/.opsaip/worktrees/<run id>. */
 export const DEFAULT_WORKTREES_DIR = join(homedir(), '.opsaip', 'worktrees');
 /** The agent name written on run tasks. */
@@ -45,6 +52,32 @@ export interface RunView {
   lastMessage?: string;
 }
 
+/** One line of a run's conversation, as GET /v1/runs/:id/transcript returns it. */
+export interface TranscriptEntry {
+  /** Increases by one per entry in the run. Gaps at the start mean older entries were dropped. */
+  id: number;
+  role: 'you' | 'agent';
+  /** you: the first prompt, or a follow-up the run accepted. agent: a message. */
+  kind: 'prompt' | 'followup' | 'message';
+  /** At most MAX_ENTRY_CHARS. Comes from the agent or the person: show it as text, never as HTML. */
+  text: string;
+  /** ISO time the entry was recorded. */
+  at: string;
+}
+
+export interface Transcript {
+  entries: TranscriptEntry[];
+  /** The run accepts no more follow-ups. */
+  finished: boolean;
+  /**
+   * POST /v1/runs/:id/message would resume the run: it has finished, its agent
+   * has exited, and the agent's session id is known (never shown).
+   */
+  canResume: boolean;
+  /** Some text was cut or some old entries were dropped to stay within the limits. */
+  truncated: boolean;
+}
+
 export type RunResult =
   | { ok: true; run: RunView }
   | { ok: false; status: 404 | 409 | 500; error: string };
@@ -53,6 +86,12 @@ export interface RunManager {
   /** Start a run (title and prompt already checked by parseNewRun). */
   start(input: { title: string; prompt: string }): Promise<RunResult>;
   get(id: string): RunView | undefined;
+  /** The run's conversation so far, or undefined for an unknown (or forgotten) run. */
+  transcript(id: string): Transcript | undefined;
+  /** The repository's folder name (never the full path). */
+  readonly repoName: string;
+  /** A run is active (starting, or its agent has not exited yet): a new one would get a 409. */
+  active(): boolean;
   answerPermission(id: string, permissionId: string, allow: boolean): RunResult;
   sendMessage(id: string, text: string): RunResult;
   cancel(id: string): RunResult;
@@ -64,6 +103,8 @@ export interface RunManagerOptions {
   store: TaskStore;
   /** The repository (OPSAIP_CONDUCTOR_DIR, already checked by conductorFromEnv). */
   repoDir: string;
+  /** Shown by GET /v1/conductor. Defaults to the last segment of repoDir. */
+  repoName?: string;
   worktreesDir?: string;
   /**
    * The agent program and the arguments before the Claude flags. Defaults to
@@ -80,6 +121,7 @@ export interface RunManagerOptions {
 
 interface Run {
   id: string;
+  title: string;
   taskId: string;
   branch: string;
   worktree: string;
@@ -88,10 +130,21 @@ interface Run {
   permissions: PermissionRequest[];
   permissionTimers: Map<string, NodeJS.Timeout>;
   lastMessage?: string;
+  /** In memory only, never logged. Bounded by the MAX_* limits above. */
+  transcript: TranscriptEntry[];
+  transcriptChars: number;
+  nextEntryId: number;
+  transcriptTruncated: boolean;
+  /** The text of the latest agent message, uncut: the result is added only if it differs. */
+  lastAgentText?: string;
+  /** The agent's session, from its init event. In memory only: never logged, never in a response. */
+  sessionId?: string;
   driver: AgentDriver;
-  /** The task is done or failed: the run accepts nothing more. */
+  /** The task is done or failed: the run accepts nothing more (until it is resumed). */
   finished: boolean;
-  /** Resolves once the agent process has exited. */
+  /** The current agent process has exited. */
+  processExited: boolean;
+  /** Resolves once the current agent process has exited. */
   exited: Promise<void>;
 }
 
@@ -112,6 +165,14 @@ const execFileAsync = promisify(execFile);
  *     permission request (after permissionTimeoutMs);
  *   - every report's time is strictly later than the previous one, so core
  *     never rejects a report as stale or as a duplicate.
+ *   - a finished run whose agent has exited can be continued by a follow-up
+ *     (sendMessage): a new agent process resumes the same session in the same
+ *     worktree (see resume). The session id stays in memory, is never logged
+ *     or returned, and is lost when the server restarts;
+ *   - each run keeps its conversation in memory (transcript): the prompt, the
+ *     accepted follow-ups and the agent's messages, bounded by the MAX_*
+ *     limits (oldest entries dropped first), forgotten with the run, never
+ *     written to disk.
  * Logs name only the run id and the exit code: never the prompt, the agent's
  * output, permission requests or paths.
  */
@@ -121,6 +182,7 @@ export function createRunManager(options: RunManagerOptions): RunManager {
   const permissionTimeoutMs = options.permissionTimeoutMs ?? PERMISSION_TIMEOUT_MS;
   const log = options.log ?? ((line: string) => console.log(line));
   const now = options.now ?? Date.now;
+  const repoName = options.repoName ?? basename(repoDir);
   const createDriver =
     options.createDriver ??
     (() => createClaudeCliDriver({ command: options.agentCommand ?? ['claude'], toolTimeoutMs: TOOL_TIMEOUT_MS }));
@@ -134,6 +196,20 @@ export function createRunManager(options: RunManagerOptions): RunManager {
   const nextAt = (): string => {
     lastAt = Math.max(now(), lastAt + 1);
     return new Date(lastAt).toISOString();
+  };
+
+  /** Add a transcript entry, cut to MAX_ENTRY_CHARS, then drop the oldest while over a limit. */
+  const record = (run: Run, role: TranscriptEntry['role'], kind: TranscriptEntry['kind'], text: string): void => {
+    const cut = truncate(text, MAX_ENTRY_CHARS);
+    if (cut.length < text.length) run.transcriptTruncated = true;
+    run.transcript.push({ id: run.nextEntryId++, role, kind, text: cut, at: new Date(now()).toISOString() });
+    run.transcriptChars += cut.length;
+    while (run.transcript.length > MAX_TRANSCRIPT_ENTRIES || run.transcriptChars > MAX_TRANSCRIPT_CHARS) {
+      const dropped = run.transcript.shift();
+      if (dropped === undefined) break;
+      run.transcriptChars -= dropped.text.length;
+      run.transcriptTruncated = true;
+    }
   };
 
   const report = (run: Run, status: AgentTaskStatus, note?: string): void => {
@@ -190,11 +266,16 @@ export function createRunManager(options: RunManagerOptions): RunManager {
 
   const onEvent = (run: Run, event: RunEvent, exited: () => void): void => {
     switch (event.type) {
+      case 'session':
+        run.sessionId = event.sessionId;
+        return;
       case 'started':
         if (!run.finished && run.status === 'queued') report(run, 'running');
         return;
       case 'message':
         run.lastMessage = truncate(event.text, MAX_LAST_MESSAGE_CHARS);
+        run.lastAgentText = event.text;
+        record(run, 'agent', 'message', event.text);
         return;
       case 'permissionRequested': {
         const { permission } = event;
@@ -215,7 +296,13 @@ export function createRunManager(options: RunManagerOptions): RunManager {
         settle(run, event.permissionId);
         return;
       case 'result':
-        if (event.text !== undefined) run.lastMessage = truncate(event.text, MAX_LAST_MESSAGE_CHARS);
+        if (event.text !== undefined) {
+          run.lastMessage = truncate(event.text, MAX_LAST_MESSAGE_CHARS);
+          if (event.text !== run.lastAgentText) {
+            run.lastAgentText = event.text;
+            record(run, 'agent', 'message', event.text);
+          }
+        }
         if (event.ok) finish(run, 'done');
         else finish(run, 'failed', 'Claude Code ended the run with an error');
         return;
@@ -227,6 +314,7 @@ export function createRunManager(options: RunManagerOptions): RunManager {
           finish(run, 'failed', `Claude Code stopped before finishing (${how})`);
         }
         log(`opsaip: conductor run ${run.id} ended (${exitText(event)})`);
+        run.processExited = true;
         if (active === run) active = undefined;
         exited();
         return;
@@ -255,29 +343,93 @@ export function createRunManager(options: RunManagerOptions): RunManager {
     // The worktree stays: Opsaip never deletes one.
     if (!created.ok) return { ok: false, status: 500, error: 'could not create the task for the run' };
 
-    let markExited: () => void = () => {};
     const run: Run = {
       id,
+      title,
       taskId,
       branch,
       worktree,
       status: 'queued',
       permissions: [],
       permissionTimers: new Map(),
+      transcript: [],
+      transcriptChars: 0,
+      nextEntryId: 1,
+      transcriptTruncated: false,
       driver: createDriver(),
       finished: false,
-      exited: new Promise<void>((resolve) => (markExited = resolve)),
+      processExited: false,
+      exited: Promise.resolve(),
     };
+    record(run, 'you', 'prompt', prompt);
     runs.set(id, run);
     forgetOldRuns(runs);
     active = run;
     log(`opsaip: conductor run ${id} started`);
+    await launch(run, prompt);
+    return { ok: true, run: view(run) };
+  };
+
+  /** Run the run's driver (a new process): the first start, or a resume. `active` is already set. */
+  const launch = async (run: Run, prompt: string, resumeSessionId?: string): Promise<void> => {
+    let markExited: () => void = () => {};
+    run.exited = new Promise<void>((resolve) => (markExited = resolve));
     try {
-      await run.driver.start({ cwd: worktree, prompt, onEvent: (event) => onEvent(run, event, markExited) });
+      await run.driver.start({
+        cwd: run.worktree,
+        prompt,
+        ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
+        onEvent: (event) => onEvent(run, event, markExited),
+      });
     } catch {
       // Only a misused driver throws (see AgentDriver.start). Free the slot.
       onEvent(run, { type: 'exited', code: null, signal: null, startFailed: true }, markExited);
     }
+  };
+
+  /**
+   * Continue a finished run: a new agent process in the same worktree that
+   * resumes the same session. The task: a failed one goes back in line
+   * (failed -> queued -> running, the retry core allows); a done one is final
+   * in core, so the run moves to a NEW task with the same title (the run's
+   * taskId changes; the old task stays done).
+   */
+  const resume = (run: Run, text: string): RunResult => {
+    const sessionId = run.sessionId;
+    if (sessionId === undefined) {
+      return { ok: false, status: 409, error: 'the run has ended and cannot be continued: Claude Code gave no session to resume' };
+    }
+    if (!run.processExited) {
+      return { ok: false, status: 409, error: 'the run is still shutting down: try again in a moment' };
+    }
+    if (active !== undefined || starting !== undefined) {
+      return { ok: false, status: 409, error: 'another run is active: one run at a time. Stop it or wait until it has ended' };
+    }
+    if (!existsSync(run.worktree)) {
+      return { ok: false, status: 409, error: 'the run cannot be continued: its worktree is gone' };
+    }
+    if (run.status === 'done') {
+      const taskId = randomUUID();
+      let created: { ok: boolean };
+      try {
+        created = store.create({ id: taskId, title: run.title, agent: RUN_AGENT, createdAt: nextAt(), source: 'you' });
+      } catch {
+        created = { ok: false };
+      }
+      if (!created.ok) return { ok: false, status: 500, error: 'could not create the task for the run' };
+      run.taskId = taskId;
+      run.status = 'queued';
+    } else {
+      report(run, 'queued');
+    }
+    run.finished = false;
+    run.processExited = false;
+    run.lastAgentText = undefined;
+    run.driver = createDriver();
+    record(run, 'you', 'followup', text);
+    active = run;
+    log(`opsaip: conductor run ${run.id} resumed`);
+    void launch(run, text, sessionId);
     return { ok: true, run: view(run) };
   };
 
@@ -302,6 +454,21 @@ export function createRunManager(options: RunManagerOptions): RunManager {
       return run === undefined ? undefined : view(run);
     },
 
+    transcript(id) {
+      const run = runs.get(id);
+      if (run === undefined) return undefined;
+      return {
+        entries: run.transcript.map((entry) => ({ ...entry })),
+        finished: run.finished,
+        canResume: run.finished && run.processExited && run.sessionId !== undefined,
+        truncated: run.transcriptTruncated,
+      };
+    },
+
+    repoName,
+
+    active: () => active !== undefined || starting !== undefined,
+
     answerPermission(id, permissionId, allow) {
       const run = find(id);
       if ('ok' in run) return run;
@@ -317,9 +484,11 @@ export function createRunManager(options: RunManagerOptions): RunManager {
     sendMessage(id, text) {
       const run = find(id);
       if ('ok' in run) return run;
-      if (run.finished || run.status === 'queued' || !run.driver.sendMessage(text)) {
+      if (run.finished) return resume(run, text);
+      if (run.status === 'queued' || !run.driver.sendMessage(text)) {
         return { ok: false, status: 409, error: 'the run is not active: follow-ups are accepted only while it runs' };
       }
+      record(run, 'you', 'followup', text);
       return { ok: true, run: view(run) };
     },
 
