@@ -88,7 +88,7 @@ export function useChat() {
   );
 
   const send = useCallback(
-    (raw: string) => {
+    (raw: string, attachments: readonly string[] = []) => {
       const question = raw.trim();
       if (!question || busy) return;
       ui.closeTask(); // the thread is hidden while a task is open
@@ -124,7 +124,7 @@ export function useChat() {
       controller.current = c;
       let timedOut = false;
       const timer = window.setTimeout(() => { timedOut = true; c.abort(); }, ASK_TIMEOUT_MS);
-      void ask(question, c.signal).then((result) => {
+      void ask(question, c.signal, attachments).then((result) => {
         window.clearTimeout(timer);
         if (controller.current !== c) return; // left the page meanwhile
         controller.current = null;

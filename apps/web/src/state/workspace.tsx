@@ -29,7 +29,7 @@ interface WorkspaceValue {
   /** Forget the token and go back to the Connect screen (Demo in dev). */
   disconnect: () => void;
   /** Ask the server a question (Live only). The token stays in here. Never throws. */
-  ask: (question: string, signal: AbortSignal) => Promise<AskResult>;
+  ask: (question: string, signal: AbortSignal, attachments?: readonly string[]) => Promise<AskResult>;
   /** Create tasks and drive Conductor runs on the server (Live only). The token stays in here. Never throws. */
   api: ServerApi;
   people: Record<string, Person>;
@@ -114,10 +114,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ask = useCallback(
-    (question: string, signal: AbortSignal): Promise<AskResult> =>
+    (question: string, signal: AbortSignal, attachments?: readonly string[]): Promise<AskResult> =>
       connection === null
         ? Promise.resolve({ ok: false, problem: 'unauthorized' })
-        : askQuestion(connection.token, question, signal),
+        : askQuestion(connection.token, question, signal, undefined, attachments),
     [connection],
   );
 

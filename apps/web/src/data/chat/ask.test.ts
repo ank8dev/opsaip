@@ -194,3 +194,17 @@ describe('the action in an answer', () => {
     }
   });
 });
+
+describe('Ask with attachments', () => {
+  it('sends the upload ids with the question, and nothing else about the files', async () => {
+    const { impl, calls } = fakeFetch(json(200, { answer: 'ok' }));
+    await askQuestion('tok', 'What is in this?', signal, impl, ['u1', 'u2']);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ question: 'What is in this?', attachments: ['u1', 'u2'] });
+  });
+
+  it('sends the same body as before when there are none', async () => {
+    const { impl, calls } = fakeFetch(json(200, { answer: 'ok' }));
+    await askQuestion('tok', 'Hi', signal, impl);
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ question: 'Hi' });
+  });
+});
