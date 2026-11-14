@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { opsyStateFor } from './opsyState';
+import { latestOpsyId, opsyStateFor } from './opsyState';
 import type { ProposalStatus, ThreadMessage, Widget } from './types';
 
 type OpsyMessage = Extract<ThreadMessage, { from: 'opsy' }>;
@@ -35,5 +35,27 @@ describe('opsyStateFor', () => {
       expect(opsyStateFor(msg(w), true)).toBe('offline');
     }
     expect(opsyStateFor(msg({ kind: 'text', text: 'x' }, true), true)).toBe('offline');
+  });
+});
+
+describe('latestOpsyId', () => {
+  const you = (id: number): ThreadMessage => ({ id, from: 'you', text: 'hi' });
+  const opsy = (id: number): ThreadMessage => ({ id, from: 'opsy', widget: { kind: 'text', text: 'ok' } });
+
+  it('is null before Opsy has said anything', () => {
+    expect(latestOpsyId([])).toBeNull();
+    expect(latestOpsyId([you(1)])).toBeNull();
+  });
+
+  it('is the latest message from Opsy, even when you spoke after it', () => {
+    expect(latestOpsyId([you(1), opsy(2), you(3), opsy(4), you(5)])).toBe(4);
+    expect(latestOpsyId([opsy(1), you(2)])).toBe(1);
+  });
+
+  it('moves on when a newer message arrives, so only one message has the avatar', () => {
+    const before = [you(1), opsy(2)];
+    const after = [...before, you(3), opsy(4)];
+    expect(latestOpsyId(before)).toBe(2);
+    expect(latestOpsyId(after)).toBe(4);
   });
 });
