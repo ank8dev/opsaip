@@ -17,10 +17,14 @@ export type Parsed<T> = { ok: true; value: T } | { ok: false; reason: string };
  * POST /v1/runs: { "title": "...", "prompt": "..." }.
  * title: the parseNewTask rules (1 to 200 characters, not only whitespace,
  * stored trimmed). prompt: 1 to MAX_PROMPT_CHARS characters, not only
- * whitespace, kept as sent. attachments (optional): upload ids, see
+ * whitespace, kept as sent. repoId (optional): a repository id from
+ * GET /v1/repos, 1 to 100 characters; left out, the default repository (or
+ * the only one) is used. attachments (optional): upload ids, see
  * parseAttachmentIds. Other fields are ignored.
  */
-export function parseNewRun(input: unknown): Parsed<{ title: string; prompt: string; attachments?: string[] }> {
+export function parseNewRun(
+  input: unknown,
+): Parsed<{ title: string; prompt: string; repoId?: string; attachments?: string[] }> {
   try {
     if (!isObject(input)) return fail('run must be an object');
     const { title, prompt } = input;
@@ -29,11 +33,20 @@ export function parseNewRun(input: unknown): Parsed<{ title: string; prompt: str
     if (!task.ok) return fail(task.reason);
     const problem = textProblem('prompt', prompt);
     if (problem !== undefined) return fail(problem);
+    const repoId = input.repoId;
+    if (repoId !== undefined && (typeof repoId !== 'string' || repoId.length === 0 || repoId.length > 100)) {
+      return fail('repoId must be a string of 1 to 100 characters');
+    }
     const ids = parseAttachmentIds(input.attachments);
     if (!ids.ok) return fail(ids.reason);
     return {
       ok: true,
-      value: { title: task.task.title, prompt: prompt as string, ...(ids.ids.length === 0 ? {} : { attachments: ids.ids }) },
+      value: {
+        title: task.task.title,
+        prompt: prompt as string,
+        ...(repoId === undefined ? {} : { repoId }),
+        ...(ids.ids.length === 0 ? {} : { attachments: ids.ids }),
+      },
     };
   } catch {
     return fail('run could not be read');

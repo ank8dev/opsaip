@@ -1,5 +1,6 @@
 // POST /v1/ask over HTTP, with a fake provider (no network, no real model).
 import { once } from 'node:events';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createTaskStore } from '@opsaip/core';
@@ -12,6 +13,9 @@ import { ProviderError } from './auth/askProvider';
 import { askProviderFromEnv } from './auth/llm';
 import { createChatStore } from './chatStore';
 import { openDatabase } from './db';
+import { createRepoRegistry } from './auth/conductor/repoRegistry';
+import { createRunManager } from './auth/conductor/runManager';
+import { makeRepo, tempDir } from './auth/conductor/testing/conductorTestKit';
 
 const TOKEN = 'ask-test-token-0123456789abcdef0123456789';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
@@ -349,5 +353,43 @@ describe('POST /v1/ask never leaks the key, the question or the answer', () => {
     expect(logs).toContain('ask 502 (gemini: provider returned no answer (SAFETY)');
     expect(logs).toContain('ask 504');
     expect(logs).toContain('ask 429');
+  });
+});
+
+describe('POST /v1/ask with repositories', () => {
+  async function withRepos() {
+    const home = tempDir('opsaip-home-');
+    const repos = createRepoRegistry({ home });
+    const api = repos.add(makeRepo(home, 'api'));
+    if (!api.ok) throw new Error('add failed');
+    const store = createTaskStore();
+    const conductor = createRunManager({ store, repos, worktreesDir: join(tempDir(), 'w'), log: () => {} });
+    return { conductor, apiId: api.repo.id };
+  }
+
+  it('sends only display names to the model and validates the named repository on the server', async () => {
+    const { conductor, apiId } = await withRepos();
+    const fake = fakeProvider(async () =>
+      JSON.stringify({ answer: 'Run it.', action: { type: 'run', title: 'Fix', prompt: 'p', repo: 'API' } }),
+    );
+    await start({ ask: fake.provider, conductor });
+    const res = await ask({ question: 'fix login in api' });
+    expect(await res.json()).toEqual({
+      answer: 'Run it.',
+      action: { type: 'run', agent: 'claude-code', title: 'Fix', prompt: 'p', repoId: apiId, repoName: 'api' },
+    });
+    expect(fake.prompts[0].user).toContain('<repositories>\n["api"]\n</repositories>');
+    expect(fake.prompts[0].user).not.toContain(apiId);
+  });
+
+  it('a repository that does not exist: no action, a plain answer', async () => {
+    const { conductor } = await withRepos();
+    const fake = fakeProvider(async () =>
+      JSON.stringify({ answer: 'Run it.', action: { type: 'run', title: 'Fix', prompt: 'p', repo: 'ghost' } }),
+    );
+    await start({ ask: fake.provider, conductor });
+    const body = (await (await ask({ question: 'fix login in ghost' })).json()) as { answer: string; action: unknown };
+    expect(body.action).toBeNull();
+    expect(body.answer).toContain('There is no repository named "ghost"');
   });
 });

@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { createClaudeCliDriver } from './claudeCliDriver';
 import type { AgentDriver, RunEvent } from './driver';
@@ -58,7 +58,9 @@ describe('a run', () => {
       taskId: run.taskId,
       status: 'done',
       branch: `opsaip/run-${run.id}`,
-      worktree: join(t.worktreesDir, run.id),
+      worktree: join(t.worktreesDir, 'default', run.id),
+      repoId: 'default',
+      repoName: basename(t.repo),
       lastMessage: 'All done',
     });
   });
@@ -262,11 +264,12 @@ describe('a run', () => {
   });
 
   it('a worktree that cannot be created is a 500 and creates no task', async () => {
-    const t = setUp('success', { repoDir: tempDir() }); // not a repository
+    const blocker = join(tempDir(), 'a-file');
+    writeFileSync(blocker, 'x'); // worktrees cannot be made inside a file
+    const t = setUp('success', { worktreesDir: join(blocker, 'worktrees') });
     const result = await t.manager.start({ title: 'x', prompt: 'x' });
     expect(result).toEqual({ ok: false, status: 500, error: 'could not create the git worktree for the run' });
     expect(t.store.all()).toEqual([]);
-    expect(readdirSync(t.worktreesDir)).toEqual([]);
     // The slot is free again.
     expect(await t.manager.start({ title: 'x', prompt: 'x' })).toMatchObject({ ok: false, status: 500 });
   });
@@ -452,10 +455,11 @@ describe('the transcript limits', () => {
     expect(t.manager.active()).toBe(false);
   });
 
-  it('repoName is the last segment of repoDir, or the option', () => {
-    const t = setUp('success', { repoDir: '/some/where/my-repo' });
-    expect(t.manager.repoName).toBe('my-repo');
-    expect(setUp('success', { repoName: 'x' }).manager.repoName).toBe('x');
+  it('the default repository is named after its folder', () => {
+    const t = setUp('success');
+    expect(t.manager.repos.list()).toEqual([
+      { id: 'default', name: basename(t.repo), path: t.repo, isDefault: true },
+    ]);
   });
 });
 

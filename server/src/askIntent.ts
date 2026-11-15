@@ -6,8 +6,14 @@
 import { parseNewTask } from '@opsaip/core';
 import { parseNewRun } from './auth/conductor/parseRun';
 
+/** A repository as Ask sees it: an id and a display name, never a path. */
+export interface AskRepo {
+  id: string;
+  name: string;
+}
+
 export type AskAction =
-  | { type: 'run'; agent: 'claude-code'; title: string; prompt: string }
+  | { type: 'run'; agent: 'claude-code'; title: string; prompt: string; repoId?: string; repoName?: string }
   | { type: 'task'; title: string };
 
 export interface AskResult {
@@ -34,6 +40,7 @@ export const ASK_RESPONSE_SCHEMA = {
         title: { type: 'STRING' },
         prompt: { type: 'STRING' },
         agent: { type: 'STRING' },
+        repo: { type: 'STRING', nullable: true },
       },
       required: ['type', 'title'],
     },
@@ -48,25 +55,29 @@ export const ASK_RESPONSE_SCHEMA = {
  * action. Unknown fields are dropped. The answer is trimmed and cut at
  * `maxAnswerChars` code points.
  */
-export function parseModelReply(raw: string, maxAnswerChars: number): AskResult {
+export function parseModelReply(raw: string, maxAnswerChars: number, repos: readonly AskRepo[] = []): AskResult {
   const parsed = parseJsonObject(raw);
   const answerField = parsed?.answer;
   if (parsed === undefined || typeof answerField !== 'string' || answerField.trim() === '') {
     return { answer: truncate(raw.trim(), maxAnswerChars), action: null };
   }
 
-  const action = readAction(parsed.action);
+  const action = readAction(parsed.action, repos);
   if (action.kind === 'wrong-agent') return { answer: ONLY_CLAUDE_CODE, action: null };
+  if (action.kind === 'bad-repo') return { answer: action.answer, action: null };
   return { answer: truncate(answerField.trim(), maxAnswerChars), action: action.value };
 }
 
-type ReadAction = { kind: 'ok'; value: AskAction | null } | { kind: 'wrong-agent' };
+type ReadAction =
+  | { kind: 'ok'; value: AskAction | null }
+  | { kind: 'wrong-agent' }
+  | { kind: 'bad-repo'; answer: string };
 
-function readAction(input: unknown): ReadAction {
+function readAction(input: unknown, repos: readonly AskRepo[]): ReadAction {
   const none: ReadAction = { kind: 'ok', value: null };
   try {
     if (!isObject(input)) return none;
-    const { type, title, prompt, agent } = input;
+    const { type, title, prompt, agent, repo } = input;
 
     if (type === 'task') {
       const task = parseNewTask({ title });
@@ -82,9 +93,32 @@ function readAction(input: unknown): ReadAction {
       // The same validation as POST /v1/runs, so the limits cannot drift.
       const run = parseNewRun({ title, prompt });
       if (!run.ok) return none;
+      // A repository the model names must exist: the server decides, not the model.
+      let chosen: AskRepo | undefined;
+      if (typeof repo === 'string' && repo.trim() !== '') {
+        const wanted = repo.trim().toLowerCase();
+        const found = repos.filter((entry) => entry.name.toLowerCase() === wanted);
+        const shown = Array.from(repo.trim()).slice(0, 60).join('');
+        if (found.length === 0) {
+          return { kind: 'bad-repo', answer: `There is no repository named "${shown}" in Settings > Repositories, so I did not propose a run.` };
+        }
+        if (found.length > 1) {
+          return {
+            kind: 'bad-repo',
+            answer: `More than one repository is named "${shown}", so I did not propose a run. Choose the repository yourself in Agent mode.`,
+          };
+        }
+        chosen = found[0];
+      }
       return {
         kind: 'ok',
-        value: { type: 'run', agent: 'claude-code', title: run.value.title, prompt: run.value.prompt },
+        value: {
+          type: 'run',
+          agent: 'claude-code',
+          title: run.value.title,
+          prompt: run.value.prompt,
+          ...(chosen === undefined ? {} : { repoId: chosen.id, repoName: chosen.name }),
+        },
       };
     }
     return none;

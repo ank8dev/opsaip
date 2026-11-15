@@ -5,11 +5,12 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, rmdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { MAX_NOTE_LENGTH, type AgentTaskStatus, type TaskStore } from '@opsaip/core';
 import { createClaudeCliDriver, withoutOpsaipVars } from './claudeCliDriver';
 import type { AgentDriver, PermissionRequest, RunEvent } from './driver';
+import { createRepoRegistry, type RepoRegistry } from './repoRegistry';
 import { truncate } from './toolSummary';
 import { promptWithAttachments, saveAttachments } from '../uploads/saveAttachments';
 import { infoOf, type AttachmentInfo, type UploadedFile } from '../uploads/uploadStore';
@@ -32,7 +33,7 @@ export const MAX_ENTRY_CHARS = 8000;
 export const MAX_TRANSCRIPT_ENTRIES = 200;
 /** Most text kept per run transcript, all entries together. The oldest entries are dropped first. */
 export const MAX_TRANSCRIPT_CHARS = 200_000;
-/** Where run worktrees go: ~/.opsaip/worktrees/<run id>. */
+/** Where run worktrees go: ~/.opsaip/worktrees/<repo id>/<run id>. */
 export const DEFAULT_WORKTREES_DIR = join(homedir(), '.opsaip', 'worktrees');
 /** The agent name written on run tasks. */
 export const RUN_AGENT = 'claude-code';
@@ -48,6 +49,10 @@ export interface RunView {
   branch: string;
   /** The run's worktree folder, kept after the run. */
   worktree: string;
+  /** The repository the run works in (GET /v1/repos). */
+  repoId: string;
+  /** That repository's display name (its folder name). */
+  repoName: string;
   /** The oldest permission request waiting for an answer, while there is one. */
   permission?: PermissionRequest;
   /** The agent's latest text (its final answer once the run is done), truncated. */
@@ -84,22 +89,26 @@ export interface Transcript {
 
 export type RunResult =
   | { ok: true; run: RunView }
-  | { ok: false; status: 404 | 409 | 500; error: string };
+  | { ok: false; status: 400 | 404 | 409 | 500; error: string };
 
 export interface RunManager {
   /**
    * Start a run (title and prompt already checked by parseNewRun). Attached
    * files are saved in the worktree and listed at the end of the prompt the
-   * agent gets (see auth/uploads/saveAttachments.ts).
+   * agent gets (see auth/uploads/saveAttachments.ts). `repoId` names the
+   * repository; left out, it is the default repository or the only one. The
+   * repository is checked again here, before anything is created.
    */
-  start(input: { title: string; prompt: string; attachments?: readonly UploadedFile[] }): Promise<RunResult>;
+  start(input: { title: string; prompt: string; repoId?: string; attachments?: readonly UploadedFile[] }): Promise<RunResult>;
   get(id: string): RunView | undefined;
   /** The run's conversation so far, or undefined for an unknown (or forgotten) run. */
   transcript(id: string): Transcript | undefined;
-  /** The repository's folder name (never the full path). */
-  readonly repoName: string;
+  /** The repositories Conductor mode can use. */
+  readonly repos: RepoRegistry;
   /** A run is active (starting, or its agent has not exited yet): a new one would get a 409. */
   active(): boolean;
+  /** The id of the repository the active run works in, or undefined while none is active. */
+  activeRepoId(): string | undefined;
   answerPermission(id: string, permissionId: string, allow: boolean): RunResult;
   sendMessage(id: string, text: string): RunResult;
   /** With files (possibly none): they are saved in the worktree first, so this is asynchronous. */
@@ -111,10 +120,10 @@ export interface RunManager {
 
 export interface RunManagerOptions {
   store: TaskStore;
-  /** The repository (OPSAIP_CONDUCTOR_DIR, already checked by conductorFromEnv). */
-  repoDir: string;
-  /** Shown by GET /v1/conductor. Defaults to the last segment of repoDir. */
-  repoName?: string;
+  /** The repositories a run can use. */
+  repos?: RepoRegistry;
+  /** Shorthand for `repos` with only this default repository (OPSAIP_CONDUCTOR_DIR, already checked). */
+  repoDir?: string;
   worktreesDir?: string;
   /**
    * The agent program and the arguments before the Claude flags. Defaults to
@@ -135,6 +144,8 @@ interface Run {
   taskId: string;
   branch: string;
   worktree: string;
+  repoId: string;
+  repoName: string;
   status: AgentTaskStatus;
   /** Waiting for the person, oldest first. */
   permissions: PermissionRequest[];
@@ -165,7 +176,7 @@ const execFileAsync = promisify(execFile);
  *   - one run at a time: a run is active from POST /v1/runs until its agent
  *     process has exited (a finished run can take a few seconds to exit);
  *   - each run gets a new branch opsaip/run-<id> and a worktree at
- *     <worktreesDir>/<id>, made from the repository's HEAD. Both are KEPT
+ *     <worktreesDir>/<repo id>/<id>, made from the repository's HEAD. Both are KEPT
  *     after the run, for the person to review. Opsaip never deletes them;
  *   - the run's task is created queued (source "you", agent "claude-code"),
  *     then: running when the agent starts; waiting_on_human (note: the
@@ -187,12 +198,12 @@ const execFileAsync = promisify(execFile);
  * output, permission requests or paths.
  */
 export function createRunManager(options: RunManagerOptions): RunManager {
-  const { store, repoDir } = options;
+  const { store } = options;
+  const repos = options.repos ?? createRepoRegistry({ defaultDir: options.repoDir });
   const worktreesDir = options.worktreesDir ?? DEFAULT_WORKTREES_DIR;
   const permissionTimeoutMs = options.permissionTimeoutMs ?? PERMISSION_TIMEOUT_MS;
   const log = options.log ?? ((line: string) => console.log(line));
   const now = options.now ?? Date.now;
-  const repoName = options.repoName ?? basename(repoDir);
   const createDriver =
     options.createDriver ??
     (() => createClaudeCliDriver({ command: options.agentCommand ?? ['claude'], toolTimeoutMs: TOOL_TIMEOUT_MS }));
@@ -200,6 +211,8 @@ export function createRunManager(options: RunManagerOptions): RunManager {
   const runs = new Map<string, Run>();
   let active: Run | undefined;
   let starting: Promise<RunResult> | undefined;
+  /** The repository of the run being started, until it is in `active`. */
+  let startingRepoId: string | undefined;
   let lastAt = 0;
 
   /** A timestamp strictly later than the previous one. */
@@ -363,19 +376,28 @@ export function createRunManager(options: RunManagerOptions): RunManager {
   const start = async ({
     title,
     prompt,
+    repoId,
     attachments = [],
   }: {
     title: string;
     prompt: string;
+    repoId?: string;
     attachments?: readonly UploadedFile[];
   }): Promise<RunResult> => {
+    // The checks run again here, right before the run starts: the folder can
+    // have changed since it was added. Nothing is created if one fails.
+    const prepared = repos.prepare(repoId);
+    if (!prepared.ok) return { ok: false, status: prepared.status, error: prepared.error };
+    const repo = prepared.repo;
+    startingRepoId = repo.id;
+
     const id = randomUUID();
     const taskId = randomUUID();
     const branch = `opsaip/run-${id}`;
-    const worktree = join(worktreesDir, id);
+    const worktree = join(worktreesDir, repo.id, id);
 
     try {
-      await createWorktree(repoDir, worktreesDir, branch, worktree);
+      await createWorktree(repo.path, worktreesDir, repo.id, branch, worktree);
     } catch {
       return { ok: false, status: 500, error: 'could not create the git worktree for the run' };
     }
@@ -395,6 +417,8 @@ export function createRunManager(options: RunManagerOptions): RunManager {
       taskId,
       branch,
       worktree,
+      repoId: repo.id,
+      repoName: repo.name,
       status: 'queued',
       permissions: [],
       permissionTimers: new Map(),
@@ -460,6 +484,10 @@ export function createRunManager(options: RunManagerOptions): RunManager {
     if (!existsSync(run.worktree)) {
       return { ok: false, status: 409, error: 'the run cannot be continued: its worktree is gone' };
     }
+    const prepared = repos.prepare(run.repoId);
+    if (!prepared.ok) {
+      return { ok: false, status: 409, error: `the run cannot be continued: its repository is not available (${prepared.error})` };
+    }
     if (run.status === 'done') {
       const taskId = randomUUID();
       let created: { ok: boolean };
@@ -498,6 +526,7 @@ export function createRunManager(options: RunManagerOptions): RunManager {
         return await starting;
       } finally {
         starting = undefined;
+        startingRepoId = undefined;
       }
     },
 
@@ -517,9 +546,11 @@ export function createRunManager(options: RunManagerOptions): RunManager {
       };
     },
 
-    repoName,
+    repos,
 
     active: () => active !== undefined || starting !== undefined,
+
+    activeRepoId: () => active?.repoId ?? startingRepoId,
 
     answerPermission(id, permissionId, allow) {
       const run = find(id);
@@ -579,6 +610,8 @@ function view(run: Run): RunView {
     status: run.status,
     branch: run.branch,
     worktree: run.worktree,
+    repoId: run.repoId,
+    repoName: run.repoName,
   };
   const permission = run.permissions[0];
   if (permission !== undefined) result.permission = { ...permission };
@@ -596,12 +629,20 @@ function forgetOldRuns(runs: Map<string, Run>): void {
 
 /**
  * `git worktree add -b <branch> <path> HEAD`, with an argument array (no
- * shell). The worktrees folder and the run's folder are made with mode 0700
+ * shell). The worktrees folder, the repository's folder in it and the run's folder are made with mode 0700
  * first, so the code in them is private to this user.
  */
-async function createWorktree(repoDir: string, worktreesDir: string, branch: string, path: string): Promise<void> {
+async function createWorktree(
+  repoDir: string,
+  worktreesDir: string,
+  repoId: string,
+  branch: string,
+  path: string,
+): Promise<void> {
   await mkdir(worktreesDir, { recursive: true, mode: 0o700 });
   await chmod(worktreesDir, 0o700);
+  await mkdir(join(worktreesDir, repoId), { recursive: true, mode: 0o700 });
+  await chmod(join(worktreesDir, repoId), 0o700);
   await mkdir(path, { mode: 0o700 });
   try {
     await execFileAsync('git', ['-C', repoDir, 'worktree', 'add', '-b', branch, path, 'HEAD'], {

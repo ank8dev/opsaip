@@ -97,13 +97,18 @@ describe('Conductor mode off', () => {
 describe('Conductor mode on', () => {
   it('GET /v1/conductor says it is on', async () => {
     await start('success');
-    expect(await json(await get('/v1/conductor'))).toEqual({ enabled: true, agent: 'claude-code', repo: basename(repoDir), active: false });
+    expect(await json(await get('/v1/conductor'))).toEqual({
+      enabled: true,
+      agent: 'claude-code',
+      repos: [{ id: 'default', name: basename(repoDir), isDefault: true }],
+      active: false,
+    });
   });
 
   it('GET /v1/conductor: the repo is the folder name only, and active follows the run', async () => {
     await start('hang');
     const body = await json(await get('/v1/conductor'));
-    expect(body.repo).toBe(basename(repoDir));
+    expect(body.repos).toEqual([{ id: 'default', name: basename(repoDir), isDefault: true }]);
     expect(JSON.stringify(body)).not.toContain(dirname(repoDir));
     expect(body.active).toBe(false);
     const run = await newRun();
