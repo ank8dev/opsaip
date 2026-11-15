@@ -5,7 +5,7 @@
 // permissionMcp.mjs, over the real socket) and calls its approve tool.
 // It never contacts any model and needs no credentials.
 //
-// The init event carries a session_id; --resume <id> is accepted and echoed in it.
+// The init event carries a session_id; --resume=<id> is accepted and echoed in it.
 //
 //   node fakeClaude.mjs --scenario <name> [--record <file>] <claude flags...>
 //
@@ -38,7 +38,10 @@ record({
   cwd: process.cwd(),
 });
 
+// "--name value" or "--name=value".
 const flag = (name) => {
+  const joined = args.find((arg) => arg.startsWith(`${name}=`));
+  if (joined !== undefined) return joined.slice(name.length + 1);
   const index = args.indexOf(name);
   return index === -1 ? undefined : args[index + 1];
 };
@@ -46,7 +49,7 @@ for (const required of ['-p', '--verbose', '--strict-mcp-config']) {
   if (!args.includes(required)) fatal(`missing ${required}`);
 }
 if (flag('--input-format') !== 'stream-json' || flag('--output-format') !== 'stream-json') fatal('not stream-json');
-// The session id a fresh run reports. A resumed run (--resume <id>) reports that id back.
+// The session id a fresh run reports. A resumed run (--resume=<id>) reports that id back.
 const FAKE_SESSION_ID = 'fake-session-0001';
 const promptTool = flag('--permission-prompt-tool');
 
@@ -200,6 +203,11 @@ switch (scenario) {
     result('done, but not exiting');
     await untilStdinEnds();
     await forever();
+    break;
+  case 'second-init':
+    // A later init line, as anything else writing to stdout could forge it.
+    out({ type: 'system', subtype: 'init', session_id: 'later-session' });
+    result('done');
     break;
   default:
     fatal(`unknown scenario ${scenario}`);

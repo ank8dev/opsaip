@@ -483,7 +483,7 @@ describe('resuming a finished run', () => {
 
     const argvs = t.record().filter((entry) => entry.event === 'argv').map((entry) => entry.argv as string[]);
     expect(argvs[0]).not.toContain('--resume');
-    expect(argvs[1].slice(argvs[1].indexOf('--resume'), argvs[1].indexOf('--resume') + 2)).toEqual(['--resume', SESSION]);
+    expect(argvs[1]).toContain(`--resume=${SESSION}`);
     expect(argvs[1]).not.toContain('Now add a test'); // the text goes to stdin, never argv
     expect(t.record().filter((entry) => entry.event === 'prompt').map((entry) => entry.text)).toEqual(['Please fix it', 'Now add a test']);
     expect(t.record().filter((entry) => entry.event === 'env').map((entry) => entry.cwd)).toEqual([run.worktree, run.worktree]);

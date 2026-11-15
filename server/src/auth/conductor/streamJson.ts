@@ -11,8 +11,12 @@
 /** Longest line kept from the agent, in characters. A longer line is dropped whole. */
 export const MAX_AGENT_LINE_CHARS = 8 * 1024 * 1024;
 
-/** What a session id may look like (Claude Code uses UUIDs). It goes into an argv entry, so keep it plain. */
-const SESSION_ID = /^[A-Za-z0-9._-]{1,200}$/;
+/**
+ * What a session id may look like (Claude Code uses UUIDs). It goes into an
+ * argv entry, so keep it plain, and it starts with a letter or digit, so it
+ * can never be read as a flag (or as "." / "..").
+ */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 
 /** What one line of the agent's output means to a run. */
 export type AgentLine =

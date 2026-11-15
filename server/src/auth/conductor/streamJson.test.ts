@@ -9,6 +9,15 @@ describe('parseAgentLine', () => {
     expect(parseAgentLine('{"type":"system","subtype":"init","session_id":"--evil flag"}')).toEqual({ kind: 'init' });
   });
 
+  it('never takes a session id that could be read as a flag: the first character is a letter or digit', () => {
+    const init = (id: string) => parseAgentLine(JSON.stringify({ type: 'system', subtype: 'init', session_id: id }));
+    expect(init('--dangerously-skip-permissions')).toEqual({ kind: 'init' });
+    expect(init('-p')).toEqual({ kind: 'init' });
+    expect(init('.hidden')).toEqual({ kind: 'init' });
+    expect(init('_x')).toEqual({ kind: 'init' });
+    expect(init('3f2b8c1e-9a4d-4e7b-8c2a-1d5e6f7a8b9c')).toEqual({ kind: 'init', sessionId: '3f2b8c1e-9a4d-4e7b-8c2a-1d5e6f7a8b9c' });
+  });
+
   it('reads the text blocks of a main-thread assistant message, joined', () => {
     const line = JSON.stringify({
       type: 'assistant',

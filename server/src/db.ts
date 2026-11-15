@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -60,13 +60,20 @@ export const SCHEMA_VERSION = MIGRATIONS.length;
 
 /**
  * Open (or create) the SQLite database at `path` and bring it to SCHEMA_VERSION.
- * Creates missing parent directories. ":memory:" gives a throwaway database.
+ * Creates missing parent directories with mode 0700, and keeps the file at
+ * 0600 (makeDatabaseFilesPrivate): it holds chats and task notes in plain
+ * text, and other users of the machine must not read it. An existing folder
+ * is left as it is (it may be any folder the person chose). ":memory:" gives
+ * a throwaway database.
  *
  * Throws if the file is not a SQLite database, or if its schema is newer than
  * this code (written by a newer server): refusing is safer than guessing.
  */
 export function openDatabase(path: string): DatabaseSync {
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
+  if (path !== ':memory:') {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    makeDatabaseFilesPrivate(path);
+  }
   const db = new DatabaseSync(path);
   try {
     // Per connection, and a no-op inside a transaction: so it is set here,
@@ -77,6 +84,31 @@ export function openDatabase(path: string): DatabaseSync {
   } catch (error) {
     db.close();
     throw error;
+  }
+}
+
+/** SQLite's own files next to the database. It gives new ones the database file's mode. */
+const SQLITE_SIDE_FILES = ['-wal', '-shm', '-journal'];
+
+/**
+ * Make the database file and SQLite's files next to it readable and writable
+ * by this user only (0600). A missing database file is created empty with
+ * 0600 first, so no data is ever in a file others can open. Missing side
+ * files are fine. Call before SQLite opens the file.
+ */
+export function makeDatabaseFilesPrivate(path: string): void {
+  try {
+    closeSync(openSync(path, 'wx', 0o600));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  chmodSync(path, 0o600);
+  for (const suffix of SQLITE_SIDE_FILES) {
+    try {
+      chmodSync(`${path}${suffix}`, 0o600);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 }
 

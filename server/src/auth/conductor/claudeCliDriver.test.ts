@@ -26,9 +26,11 @@ describe('claudeArgs', () => {
     ]);
   });
 
-  it('--resume <session id> only when continuing a session', () => {
-    expect(claudeArgs('/x', 'abc-123').slice(0, 2)).toEqual(['--resume', 'abc-123']);
-    expect(claudeArgs('/x')).not.toContain('--resume');
+  it('--resume=<session id>, one argv entry, only when continuing a session', () => {
+    // One entry: "--resume" takes an optional value, so a separate "-..." entry would be read as a flag.
+    expect(claudeArgs('/x', 'abc-123')[0]).toBe('--resume=abc-123');
+    expect(claudeArgs('/x', 'abc-123')).not.toContain('abc-123');
+    expect(claudeArgs('/x').some((arg) => arg.startsWith('--resume'))).toBe(false);
   });
 
   it('never skips permissions', () => {
@@ -159,6 +161,13 @@ describe('createClaudeCliDriver with the fake agent', () => {
     await waitFor(run.exited);
     expect(run.events.some((event) => event.type === 'permissionRequested')).toBe(false);
     expect(run.events).toContainEqual({ type: 'result', ok: true, text: `decision: deny (${TOO_LONG_TO_SHOW})` });
+  });
+
+  it('takes the session id from the first init line only: a later one cannot replace it', async () => {
+    const run = drive('second-init');
+    await run.driver.start({ cwd: run.dir, prompt: 'x', onEvent: (event) => run.events.push(event) });
+    await waitFor(run.exited);
+    expect(run.events.filter((event) => event.type === 'session')).toEqual([{ type: 'session', sessionId: 'fake-session-0001' }]);
   });
 
   it('SIGKILLs an agent that ignores SIGTERM', async () => {
