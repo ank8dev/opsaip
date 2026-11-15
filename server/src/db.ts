@@ -43,6 +43,16 @@ const MIGRATIONS: readonly string[] = [
      PRIMARY KEY (chat_id, seq)
    ) STRICT;
    CREATE INDEX chats_updated_at ON chats (updated_at);`,
+  // 4 -> 5: the repositories a person added for Conductor mode. path is the
+  // real (symlink-free) absolute path, checked when it was added and again
+  // before every run; name is its folder name. Rows are only ever a pointer:
+  // removing one never touches the files on disk.
+  `CREATE TABLE repositories (
+     id         TEXT PRIMARY KEY,
+     path       TEXT NOT NULL UNIQUE,
+     name       TEXT NOT NULL,
+     created_at TEXT NOT NULL
+   ) STRICT;`,
 ];
 
 /** The schema this code reads and writes, stored in SQLite's PRAGMA user_version. */

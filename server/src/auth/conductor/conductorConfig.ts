@@ -10,8 +10,9 @@ export const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', '::1', 'localhost
 
 /** What GET /v1/conductor and POST /v1/runs say while Conductor mode is off. */
 export const CONDUCTOR_OFF =
-  'Conductor mode is off. Set OPSAIP_CONDUCTOR_DIR to the absolute path of a git repository on ' +
-  'this machine and restart the server. See "Conductor mode (experimental)" in README.md.';
+  'Conductor mode is off. It needs a server that listens on this machine and at least one repository: ' +
+  'add one in Settings > Repositories, or set OPSAIP_CONDUCTOR_DIR to the absolute path of a git ' +
+  'repository and restart the server. See "Conductor mode (experimental)" in README.md.';
 
 export type ConductorFromEnv = { ok: true; dir: string | undefined } | { ok: false; problem: string };
 
@@ -75,7 +76,7 @@ export function conductorFromEnv(
 }
 
 /** Run git with an argument array (no shell). The trimmed stdout, or undefined if it failed. */
-function git(dir: string, args: readonly string[]): string | undefined {
+export function git(dir: string, args: readonly string[]): string | undefined {
   const result = spawnSync('git', ['-C', dir, ...args], {
     encoding: 'utf8',
     shell: false,

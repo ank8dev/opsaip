@@ -4,6 +4,9 @@ import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { readServerVersion } from './about';
 import { createApp } from './app';
+import { LOOPBACK_HOSTS } from './auth/conductor/conductorConfig';
+import { createRepoRegistry } from './auth/conductor/repoRegistry';
+import { createRepoStore } from './auth/conductor/repoStore';
 import { createRunManager, type RunManager } from './auth/conductor/runManager';
 import { ConfigError, loadConfig, type Config } from './config';
 import { createChatStore } from './chatStore';
@@ -34,9 +37,15 @@ try {
 // the web app folder and the Ask provider and model names.
 const webDir = resolve(config.webDir);
 const store = createSqliteTaskStore(db);
-// Conductor mode: the repository path is never logged (it is the user's own).
-const conductor: RunManager | undefined =
-  config.conductorDir === undefined ? undefined : createRunManager({ store, repoDir: config.conductorDir });
+// Conductor mode: only on a server that listens on this machine. It is "on"
+// once there is a repository (OPSAIP_CONDUCTOR_DIR, or one added in Settings).
+// Repository paths are never logged (they are the user's own).
+const conductor: RunManager | undefined = LOOPBACK_HOSTS.includes(config.host)
+  ? createRunManager({
+      store,
+      repos: createRepoRegistry({ store: createRepoStore(db), defaultDir: config.conductorDir }),
+    })
+  : undefined;
 const updateCheck = createUpdateCheck({
   current: readServerVersion(),
   enabled: updateCheckEnabled(process.env),
@@ -63,10 +72,11 @@ server.listen(port, host, () => {
   } else {
     console.log(`opsaip: Ask is on (${config.ask.name}, model ${config.ask.model})`);
   }
-  if (conductor === undefined) {
-    console.log('opsaip: Conductor mode is off (set OPSAIP_CONDUCTOR_DIR to turn it on)');
+  const repoCount = conductor?.repos.list().length ?? 0;
+  if (repoCount === 0) {
+    console.log('opsaip: Conductor mode is off (add a repository in Settings > Repositories, or set OPSAIP_CONDUCTOR_DIR)');
   } else {
-    console.log('opsaip: Conductor mode is on (experimental, agent claude-code)');
+    console.log(`opsaip: Conductor mode is on (experimental, agent claude-code, ${repoCount} ${repoCount === 1 ? 'repository' : 'repositories'})`);
   }
   if (updateCheck.status().enabled) {
     console.log('opsaip: update check is on (once a day; set OPSAIP_UPDATE_CHECK=off to turn it off)');

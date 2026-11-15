@@ -1,9 +1,14 @@
 // The HTTP endpoints of Conductor mode. app.ts mounts them behind the same
 // access-token guard as every other /v1 path; nothing here checks the token.
 //
-//   GET  /v1/conductor                200 { enabled, agent: "claude-code", reason? } when on, also
-//                                     { repo: "<folder name only>", active: <a run is active> }
-//   POST /v1/runs                     { title, prompt, attachments? } -> 201 { run } | 400 | 409 | 413 | 415 | 500 | 503
+//   GET  /v1/conductor                200 { enabled, agent: "claude-code", reason? }; enabled means at least one
+//                                     repository exists. When on, also { repos: [{ id, name, isDefault }]
+//                                     (folder names only), active: <a run is active> }
+//   GET  /v1/repos                    200 { repos: [{ id, name, path, isDefault }] } | 503
+//   POST /v1/repos                    { path } -> 201 { repo } | 400 { error, code } (refused) | 409 | 413 | 415 | 503
+//   DELETE /v1/repos/:id              204 | 404 | 409 (the default repository, or it has an active run) | 503
+//                                     (never deletes files)
+//   POST /v1/runs                     { title, prompt, repoId?, attachments? } -> 201 { run } | 400 | 404 | 409 | 413 | 415 | 500 | 503
 //   GET  /v1/runs/:id                 200 { run } | 404 | 503
 //   GET  /v1/runs/:id/transcript      200 { transcript: { entries: [{ id, role, kind, text, at, attachments? }], finished, canResume, truncated } } | 404 | 503
 //   POST /v1/runs/:id/permission      { allow, permissionId } -> 200 { run } | 400 | 404 | 409 | 413 | 415 | 503
@@ -12,8 +17,9 @@
 //   POST /v1/runs/:id/cancel          (no body) -> 200 { run } | 404 | 409 | 503
 //
 // attachments: ids from POST /v1/uploads?purpose=agent (auth/uploads); unknown or expired -> 400.
-// 503: Conductor mode is off. 409: one run at a time, or the run is not in a
-// state that accepts this (ended, no such pending request).
+// 503: Conductor mode is off (no loopback host). 409: one run at a time, or the run is not in a
+// state that accepts this (ended, no such pending request), or the repository
+// failed its checks again just before the run.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { CONDUCTOR_OFF } from './conductorConfig';
 import { parseFollowUp, parseNewRun, parsePermissionAnswer } from './parseRun';
@@ -51,14 +57,46 @@ export function conductorRoutes({
 
   return {
     '/v1/conductor': {
-      GET: (_req, res) =>
-        sendJson(
-          res,
-          200,
-          manager === undefined
-            ? { enabled: false, agent: RUN_AGENT, reason: CONDUCTOR_OFF }
-            : { enabled: true, agent: RUN_AGENT, repo: manager.repoName, active: manager.active() },
-        ),
+      GET: (_req, res) => {
+        const repos = manager?.repos.list() ?? [];
+        if (manager === undefined || repos.length === 0) {
+          return sendJson(res, 200, { enabled: false, agent: RUN_AGENT, reason: CONDUCTOR_OFF });
+        }
+        sendJson(res, 200, {
+          enabled: true,
+          agent: RUN_AGENT,
+          repos: repos.map(({ id, name, isDefault }) => ({ id, name, isDefault })),
+          active: manager.active(),
+        });
+      },
+    },
+    '/v1/repos': {
+      GET: (_req, res) => {
+        if (manager === undefined) return off(res);
+        sendJson(res, 200, { repos: manager.repos.list() });
+      },
+      POST: async (req, res) => {
+        if (manager === undefined) return off(res);
+        const body = await readJsonBody(req, res);
+        if (!body.ok) return;
+        const input = body.input;
+        const path = typeof input === 'object' && input !== null && !Array.isArray(input) ? (input as { path?: unknown }).path : undefined;
+        if (typeof path !== 'string') return sendJson(res, 400, { error: 'path must be a string', code: 'invalid_path' });
+        const added = manager.repos.add(path);
+        if (!added.ok) return sendJson(res, added.status, { error: added.error, code: added.code });
+        sendJson(res, 201, { repo: added.repo });
+      },
+    },
+    '/v1/repos/:id': {
+      DELETE: (_req, res, { id }) => {
+        if (manager === undefined) return off(res);
+        if (manager.repos.get(id) !== undefined && manager.activeRepoId() === id) {
+          return sendJson(res, 409, { error: 'a run is active in this repository: stop it or wait until it has ended' });
+        }
+        const removed = manager.repos.remove(id);
+        if (!removed.ok) return sendJson(res, removed.status, { error: removed.error });
+        res.writeHead(204).end();
+      },
     },
     '/v1/runs': {
       POST: async (req, res) => {

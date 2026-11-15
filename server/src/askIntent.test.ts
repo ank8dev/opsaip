@@ -101,3 +101,61 @@ describe('ASK_RESPONSE_SCHEMA', () => {
     expect(ASK_RESPONSE_SCHEMA.required).toContain('answer');
   });
 });
+
+describe('parseModelReply: a repository named in a run', () => {
+  const repos = [
+    { id: 'r1', name: 'Web-App' },
+    { id: 'r2', name: 'api' },
+    { id: 'r3', name: 'twin' },
+    { id: 'r4', name: 'Twin' },
+  ];
+  const run = (repo: unknown) =>
+    parseModelReply(JSON.stringify({ answer: 'ok', action: { type: 'run', title: 't', prompt: 'p', repo } }), MAX, repos);
+
+  it('a known display name (any case, trimmed) becomes repoId and repoName', () => {
+    expect(run(' web-app ').action).toEqual({
+      type: 'run',
+      agent: 'claude-code',
+      title: 't',
+      prompt: 'p',
+      repoId: 'r1',
+      repoName: 'Web-App',
+    });
+  });
+
+  it('no repo, null or blank: the action has no repository (the person chooses)', () => {
+    for (const repo of [undefined, null, '', '  ']) {
+      expect(run(repo).action).toEqual({ type: 'run', agent: 'claude-code', title: 't', prompt: 'p' });
+    }
+  });
+
+  it('an unknown name: fixed answer naming it (cut to 60 characters), no action', () => {
+    expect(run('nope')).toEqual({
+      answer: 'There is no repository named "nope" in Settings > Repositories, so I did not propose a run.',
+      action: null,
+    });
+    expect(run('x'.repeat(100)).answer).toContain(`"${'x'.repeat(60)}"`);
+  });
+
+  it('two repositories with the same name: no action', () => {
+    const refused = run('TWIN');
+    expect(refused.action).toBeNull();
+    expect(refused.answer).toContain('More than one repository');
+  });
+
+  it('a name that is not text, or any name when there are no repositories: no action', () => {
+    expect(run(5).action).toEqual({ type: 'run', agent: 'claude-code', title: 't', prompt: 'p' });
+    const none = parseModelReply(JSON.stringify({ answer: 'ok', action: { type: 'run', title: 't', prompt: 'p', repo: 'api' } }), MAX);
+    expect(none.action).toBeNull();
+  });
+
+  it('a task never carries a repository', () => {
+    expect(
+      parseModelReply(JSON.stringify({ answer: 'ok', action: { type: 'task', title: 't', repo: 'api' } }), MAX, repos).action,
+    ).toEqual({ type: 'task', title: 't' });
+  });
+
+  it('the response schema lets the model send repo', () => {
+    expect(ASK_RESPONSE_SCHEMA.properties.action.properties.repo).toBeDefined();
+  });
+});

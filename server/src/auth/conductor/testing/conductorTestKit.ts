@@ -1,7 +1,7 @@
 // Test helpers (not tests) for Conductor mode: temporary git repositories,
 // the fake agent, a task store that remembers every status it accepted.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,9 +32,13 @@ export function git(dir: string, ...args: string[]): string {
   return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
-/** A git repository with one commit (and a README), at its real path. */
-export function makeRepo(): string {
-  const dir = tempDir('opsaip-repo-');
+/** A git repository with one commit (and a README), at its real path. `inside`: its parent folder (made if needed), default a new temporary one. */
+export function makeRepo(inside?: string, name?: string): string {
+  let dir = tempDir('opsaip-repo-');
+  if (inside !== undefined) {
+    dir = join(inside, name ?? 'repo');
+    mkdirSync(dir, { recursive: true });
+  }
   git(dir, 'init', '-q');
   execFileSync('sh', ['-c', 'echo hello > README.md'], { cwd: dir });
   git(dir, 'add', 'README.md');

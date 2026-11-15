@@ -54,7 +54,7 @@ describe('openDatabase', () => {
 
   it('creates an empty tasks table and sets the schema version', () => {
     const db = openDatabase(join(dir, 'opsaip.db'));
-    expect(SCHEMA_VERSION).toBe(4);
+    expect(SCHEMA_VERSION).toBe(5);
     expect(userVersion(db)).toBe(SCHEMA_VERSION);
     expect(db.prepare('SELECT * FROM tasks').all()).toEqual([]);
     expect(columnsOf(db)).toEqual(COLUMNS_V3);
@@ -308,14 +308,14 @@ const tablesOf = (db: DatabaseSync) =>
     (t) => t.name,
   );
 
-describe('migration from version 3 to 4', () => {
-  it('adds the chat tables and keeps the tasks', () => {
+describe('migration from version 3 to the latest', () => {
+  it('adds the chat and repository tables and keeps the tasks', () => {
     const path = join(dir, 'opsaip.db');
     createVersion3Database(path);
     const db = openDatabase(path);
-    expect(SCHEMA_VERSION).toBe(4);
-    expect(userVersion(db)).toBe(4);
-    expect(tablesOf(db)).toEqual(['chat_messages', 'chats', 'tasks']);
+    expect(SCHEMA_VERSION).toBe(5);
+    expect(userVersion(db)).toBe(5);
+    expect(tablesOf(db)).toEqual(['chat_messages', 'chats', 'repositories', 'tasks']);
     expect(db.prepare('SELECT id, title, source FROM tasks ORDER BY seq').all()).toEqual([
       { id: 'zeta', title: 'Old task', source: 'you' },
       { id: 'alpha', title: null, source: null },
@@ -329,20 +329,20 @@ describe('migration from version 3 to 4', () => {
     createVersion3Database(path);
     openDatabase(path).close();
     const again = openDatabase(path);
-    expect(userVersion(again)).toBe(4);
+    expect(userVersion(again)).toBe(5);
     expect(again.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
     again.close();
   });
 
-  it('refuses a version newer than 4 and leaves the file alone', () => {
+  it('refuses a version newer than the latest and leaves the file alone', () => {
     const path = join(dir, 'opsaip.db');
     createVersion3Database(path);
     const newer = new DatabaseSync(path);
-    newer.exec('PRAGMA user_version = 5');
+    newer.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`);
     newer.close();
-    expect(() => openDatabase(path)).toThrow(/schema version 5 is not supported/);
+    expect(() => openDatabase(path)).toThrow(new RegExp(`schema version ${SCHEMA_VERSION + 1} is not supported`));
     const check = new DatabaseSync(path);
-    expect(userVersion(check)).toBe(5);
+    expect(userVersion(check)).toBe(SCHEMA_VERSION + 1);
     expect(tablesOf(check)).toEqual(['tasks']);
     check.close();
   });
@@ -374,5 +374,52 @@ describe('chat tables', () => {
     addChat(db, 'c1');
     expect(() => addMessage(db, 'c1', 0, 'admin')).toThrow(/CHECK/);
     db.close();
+  });
+});
+
+describe('migration from version 4 to 5 (repositories)', () => {
+  function createVersion4Database(path: string): void {
+    createVersion3Database(path);
+    const v4 = new DatabaseSync(path);
+    v4.exec(`
+      CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;
+      CREATE TABLE chat_messages (
+        chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('you', 'opsy')),
+        text TEXT NOT NULL,
+        widget TEXT,
+        at TEXT NOT NULL,
+        PRIMARY KEY (chat_id, seq)
+      ) STRICT;
+      INSERT INTO chats VALUES ('c1', 'Old chat', '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z');
+      INSERT INTO chat_messages VALUES ('c1', 0, 'you', 'hello', NULL, '2026-11-01T10:00:00Z');
+      PRAGMA user_version = 4;
+    `);
+    v4.close();
+  }
+
+  it('adds an empty repositories table and keeps tasks and chats', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion4Database(path);
+    const db = openDatabase(path);
+    expect(userVersion(db)).toBe(5);
+    expect(db.prepare('SELECT * FROM repositories').all()).toEqual([]);
+    expect(db.prepare('SELECT count(*) AS n FROM tasks').get()).toEqual({ n: 2 });
+    expect(db.prepare('SELECT text FROM chat_messages').all()).toEqual([{ text: 'hello' }]);
+    db.close();
+  });
+
+  it('keeps added repositories when the file is opened again, and refuses a repeated path', () => {
+    const path = join(dir, 'opsaip.db');
+    createVersion4Database(path);
+    const db = openDatabase(path);
+    db.prepare('INSERT INTO repositories VALUES (?, ?, ?, ?)').run('r1', '/home/me/app', 'app', '2026-11-02T10:00:00Z');
+    expect(() => db.prepare('INSERT INTO repositories VALUES (?, ?, ?, ?)').run('r2', '/home/me/app', 'app', 'x')).toThrow(/UNIQUE/);
+    db.close();
+    const again = openDatabase(path);
+    expect(userVersion(again)).toBe(5);
+    expect(again.prepare('SELECT id, name FROM repositories').all()).toEqual([{ id: 'r1', name: 'app' }]);
+    again.close();
   });
 });

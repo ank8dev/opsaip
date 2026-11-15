@@ -154,7 +154,7 @@ npm run server                                 # http://127.0.0.1:4100
 | `OPSAIP_LLM_PROVIDER` | none (Ask off) | AI provider for `POST /v1/ask`: `gemini`. Set together with `OPSAIP_LLM_KEY`, see [Ask](#ask-optional). |
 | `OPSAIP_LLM_KEY` | none (Ask off) | The provider's API key. Never logged, never returned, never sent to the browser. |
 | `OPSAIP_LLM_MODEL` | `gemini-3.5-flash-lite` | Model id. Only with the two variables above. |
-| `OPSAIP_CONDUCTOR_DIR` | none (off) | Absolute path to a git repository on this machine: turns on [Conductor mode](#conductor-mode-experimental). A bad value stops the server at startup. |
+| `OPSAIP_CONDUCTOR_DIR` | none | Absolute path to a git repository on this machine: the *default* repository of [Conductor mode](#conductor-mode-experimental). Optional: you can also [add repositories in Settings](#several-repositories). A bad value stops the server at startup. |
 | `OPSAIP_UPDATE_CHECK` | on | `off` (also `0` or `false`) turns the [update check](#update-check) off: the server then makes no network request for it at all. |
 
 ### Update check
@@ -174,8 +174,11 @@ JSON: `{ "error": "<reason>" }`.
 | `POST /v1/tasks`    | Body: `{ "title": "...", "agent": "..." }` (`agent` optional). Creates a queued task from you. 201 `{ "task" }`; 400 invalid input; 409 id already taken; 413 over 16 KB; 415 not `application/json` |
 | `GET /v1/tasks`     | 200 `{ "tasks": [...] }`, in the order they were created                                                                            |
 | `POST /v1/ask`      | Body: `{ "question": "...", "history": [{ "role": "you"\|"opsy", "text": "..." }] }` (`history` optional, see [Ask](#ask-optional)). 200 `{ "answer" }`; 400 bad question or history; 413; 415; 429 too many questions; 502 provider failed; 503 Ask not configured; 504 provider timed out. See [Ask](#ask-optional). |
-| `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `reason` (only when off) says how to turn Conductor mode on.        |
-| `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "..." }`. Starts a [Conductor](#conductor-mode-experimental) run. 201 `{ "run" }`; 400 invalid input; 409 a run is already active; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
+| `GET /v1/conductor` | 200 `{ "enabled", "agent": "claude-code", "reason"? }`. `enabled` means there is at least one repository. `reason` (only when off) says how to turn Conductor mode on. When on, also `repos` (`[{ "id", "name", "isDefault" }]`, folder names only) and `active`. |
+| `GET /v1/repos`     | 200 `{ "repos": [{ "id", "name", "path", "isDefault" }] }`, the default repository first. 503 Conductor mode is not available (the server does not listen on this machine). See [Several repositories](#several-repositories). |
+| `POST /v1/repos`    | Body: `{ "path": "/Users/me/code/app" }`. Adds a repository. 201 `{ "repo" }`; 400 `{ "error", "code" }` the path is refused (see the table below); 409 already in the list (`duplicate`) or 50 repositories (`too_many`); 413; 415; 503 |
+| `DELETE /v1/repos/:id` | Removes a repository from the list; its files are never touched. 204; 404 unknown id; 409 it is the default repository, or a run is active in it; 503 |
+| `POST /v1/runs`     | Body: `{ "title": "...", "prompt": "...", "repoId"? }`. Starts a [Conductor](#conductor-mode-experimental) run in that repository (default: the default repository, or the only one). 201 `{ "run" }`; 400 invalid input or `repoId` needed; 404 unknown `repoId`; 409 a run is already active, or the repository fails its checks again; 413; 415; 500 the worktree or task could not be created; 503 Conductor mode is off |
 | `GET /v1/runs/:id`  | 200 `{ "run" }`; 404 unknown run; 503 off                                                                                           |
 | `GET /v1/runs/:id/transcript` | 200 `{ "transcript": { "entries": [{ "id", "role": "you"\|"agent", "kind": "prompt"\|"followup"\|"message", "text", "at" }], "finished", "canResume", "truncated" } }`; 404 unknown run; 503 off. In memory only: at most 200 entries and 200 000 characters per run (oldest dropped first), 8000 characters per entry. `finished`: the run accepts no more follow-ups (until resumed). `canResume`: it has finished, its agent has exited and its session id is known, so a follow-up resumes it. The session id is kept in memory only and never shown. |
 | `POST /v1/runs/:id/permission` | Body: `{ "allow": true, "permissionId": "..." }`. Answers the run's pending permission request. 200 `{ "run" }`; 400; 404; 409 no pending request with that id, or the run has ended; 413; 415; 503 |
@@ -236,7 +239,8 @@ The database schema version is kept in SQLite's `user_version`. A database from 
 server is upgraded on start, in one transaction; one from a newer server is refused. Each change
 is a new migration step at the end of the list in `server/src/db.ts`; a step that has shipped is
 never edited. Version 4 adds the `chats` and `chat_messages` tables for [Chats](#chats); a
-version 3 database keeps all its tasks. Foreign keys are on, so deleting a chat deletes its messages.
+version 3 database keeps all its tasks. Version 5 adds the `repositories` table for
+[Several repositories](#several-repositories); older databases keep their tasks and chats. Foreign keys are on, so deleting a chat deletes its messages.
 
 Tasks are stored in SQLite through Node's built-in `node:sqlite`, so they survive a restart.
 On Node 22 every start prints `ExperimentalWarning: SQLite is an experimental feature`. This is
@@ -392,24 +396,74 @@ command you already use. It is off by default.
   Claude Code **2.1.325**.
 - `git`, and a repository with at least one commit.
 
-**Turn it on** (then restart the server):
+**Turn it on**: add a repository in Settings > Repositories (see
+[Several repositories](#several-repositories)). Conductor mode is on as soon as there is one. You
+can also name a *default* repository with an environment variable (then restart the server):
 
 ```bash
 export OPSAIP_CONDUCTOR_DIR=/Users/me/code/my-app   # the top folder of a git repository
-npm run server        # prints "Conductor mode is on (experimental, agent claude-code)"
+npm run server        # prints "Conductor mode is on (experimental, agent claude-code, 1 repository)"
 ```
 
-The server does not start, and says why, if the path is not absolute, does not exist, is not a
+The server does not start, and says why, if this path is not absolute, does not exist, is not a
 folder, is a subfolder of a repository instead of its top folder (`git rev-parse --show-toplevel`),
 is not a repository, has no commit yet, or if `OPSAIP_HOST` is not a loopback address. Messages
-never print the path. Unset the variable to turn Conductor mode off.
+never print the path. Unset the variable to drop the default repository. On a server that does
+not listen on this machine (`OPSAIP_HOST` is not a loopback address) Conductor mode is never
+available: the repository endpoints answer 503.
+
+### Several repositories
+
+Conductor mode can use many repositories. Choose which one a run uses when you start it.
+
+**Add one:** Settings > Repositories > paste the absolute path of the repository's top folder and
+choose Add (in the desktop app there is also a Choose folder button). Or call
+`POST /v1/repos` with `{ "path": "..." }` and your access token. The list is stored in the
+server's SQLite database (database schema version 5, table `repositories`: id, real path, folder
+name). The repository from `OPSAIP_CONDUCTOR_DIR`, if set, is always in the list as the
+**default** repository; it is not stored in the database and cannot be removed here.
+
+**Remove one:** Settings > Repositories > Remove, or `DELETE /v1/repos/:id`. This only forgets
+the repository: Opsaip never deletes your files, branches or worktrees. It is refused while a run
+is active in that repository.
+
+**What is refused when you add a path, and why.** The path is resolved to its real path first
+(symlinks and `..` are followed), and the checks run on that:
+
+| Code | Refused when | Why |
+| --- | --- | --- |
+| `invalid_path` | It is not text, is empty, longer than 4096 characters, or contains a NUL character | Not a path |
+| `not_absolute` | It does not start with `/` (`~` is not expanded) | A relative path would mean a different folder for the server than for you |
+| `not_found` | It does not exist, or cannot be read | |
+| `not_directory` | It is a file | |
+| `is_root` | It is `/` | An agent must never work on the whole disk |
+| `system_folder` | It is, or is inside, `/bin /boot /dev /etc /lib /lib32 /lib64 /proc /sbin /sys /usr /var /System /Library /Applications /private/etc /private/var` | System files are not yours to edit |
+| `is_home` | It is your home folder itself | It holds everything of yours, not one project. Choose a repository inside it |
+| `opsaip_folder` | It is `~/.opsaip` or inside it | Opsaip keeps its worktrees there |
+| `outside_home` | It is not inside your home folder | The agent edits files and may run commands: Opsaip keeps it to your own files. A symlink inside home that points outside is refused for the same reason |
+| `not_git` | It is not a git repository, or git is not installed | A run is a `git worktree` of the repository |
+| `not_top_folder` | It is a subfolder of a repository | Choose the top folder (`git rev-parse --show-toplevel`) |
+| `no_commit` | The repository has no commit yet | A worktree starts from `HEAD` |
+| `duplicate` (409) | The same repository is already in the list (also through a symlink) | |
+
+The same checks run **again right before every run starts** (and before a follow-up resumes a
+finished run, which also needs its repository to still be in the list). A folder can change after
+it was added: if it was deleted, is no longer a git repository, or was replaced by a symlink, the
+run is refused with 409 and nothing is created. The default repository from
+`OPSAIP_CONDUCTOR_DIR` skips the home-folder rules (it was your explicit choice at startup) but
+must still exist, be a git repository and have a commit.
+
+Worktrees of a repository go to `~/.opsaip/worktrees/<repository id>/<run id>`. Still one active
+run at a time, across all repositories. In Ask, you can name a repository by its display name
+(its folder name), for example "fix the login bug in web-app": the server checks the name against
+the list, and an unknown or ambiguous name proposes nothing.
 
 **What a run does**
 
 1. `POST /v1/runs` with a title and a prompt. One run at a time (409 while one is active).
 2. Opsaip makes a new branch and worktree from the repository's current `HEAD` (uncommitted
-   changes are not included): `git worktree add -b opsaip/run-<id> ~/.opsaip/worktrees/<id> HEAD`.
-   `~/.opsaip/worktrees` and the run's folder are created with mode `0700`.
+   changes are not included): `git worktree add -b opsaip/run-<id> ~/.opsaip/worktrees/<repository id>/<id> HEAD`.
+   `~/.opsaip/worktrees`, the repository's folder in it and the run's folder are created with mode `0700`.
 3. It creates a task (source "you", agent `claude-code`), and starts, in that worktree:
 
    ```bash
@@ -434,8 +488,8 @@ never print the path. Unset the variable to turn Conductor mode off.
    has not exited 10 seconds later (for example it waits for background work it started), Opsaip
    stops it: SIGTERM, then SIGKILL to its whole process group 5 seconds after.
 
-`GET /v1/runs/:id` returns `{ "run": { "id", "taskId", "status", "branch", "worktree", "permission"?,
-"lastMessage"? } }`: `permission` is `{ "id", "tool", "summary" }` while a request waits (answer
+`GET /v1/runs/:id` returns `{ "run": { "id", "taskId", "status", "branch", "worktree", "repoId", "repoName",
+"permission"?, "lastMessage"? } }`: `permission` is `{ "id", "tool", "summary" }` while a request waits (answer
 it with that `id`); `lastMessage` is the agent's latest text, then its final answer, cut at 2000
 characters. `summary` (300 characters at most) and `lastMessage` come from the agent: show them as
 text, never as HTML. A prompt or follow-up is at most 12 000 characters, and the whole request at

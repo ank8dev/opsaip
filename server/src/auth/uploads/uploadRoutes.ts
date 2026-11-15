@@ -33,8 +33,8 @@ export interface UploadRouteHelpers {
   store: UploadStore;
   /** undefined: Ask is off. */
   ask: AskProvider | undefined;
-  /** Conductor mode is on. */
-  agentEnabled: boolean;
+  /** Conductor mode can run an agent. A function, because repositories can be added while the server runs. */
+  agentEnabled: boolean | (() => boolean);
   sendJson(res: ServerResponse, status: number, body: unknown, headers?: Record<string, string>): void;
 }
 
@@ -49,7 +49,7 @@ export function capabilities({ ask, agentEnabled }: Pick<UploadRouteHelpers, 'as
       types: ask?.capabilities.types ?? [],
     },
     agent: {
-      enabled: agentEnabled,
+      enabled: typeof agentEnabled === 'function' ? agentEnabled() : agentEnabled,
       maxFiles: MAX_FILES,
       maxTotalBytes: AGENT_MAX_TOTAL_BYTES,
       types: AGENT_TYPES,
@@ -60,7 +60,7 @@ export function capabilities({ ask, agentEnabled }: Pick<UploadRouteHelpers, 'as
 export function uploadRoutes({ store, ask, agentEnabled, sendJson }: UploadRouteHelpers): Record<string, Record<string, RouteHandler>> {
   /** The types for a purpose, or the answer to send (503) when it is not available. */
   const typesFor = (purpose: UploadPurpose): readonly FileTypeCapability[] | string => {
-    if (purpose === 'agent') return agentEnabled ? AGENT_TYPES : CONDUCTOR_OFF;
+    if (purpose === 'agent') return (typeof agentEnabled === 'function' ? agentEnabled() : agentEnabled) ? AGENT_TYPES : CONDUCTOR_OFF;
     const types = ask?.capabilities.types ?? [];
     return types.length > 0 ? types : 'Ask is not configured for attachments';
   };
