@@ -24,7 +24,7 @@ describe('problemFor: statuses per action', () => {
   });
 
   it('has a table for every action', () => {
-    expect(Object.keys(STATUS_PROBLEM).sort()).toEqual(['about', 'cancel', 'capabilities', 'chats', 'conductor', 'createTask', 'getRun', 'message', 'permission', 'startRun', 'transcript', 'update', 'upload']);
+    expect(Object.keys(STATUS_PROBLEM).sort()).toEqual(['about', 'addRepo', 'cancel', 'capabilities', 'chats', 'conductor', 'createTask', 'getRun', 'message', 'permission', 'removeRepo', 'repos', 'startRun', 'transcript', 'update', 'upload']);
   });
 });
 
@@ -51,6 +51,26 @@ describe('problemText and problemReply', () => {
     expect(problemText('run-failed')).toBe('The run could not start.');
   });
 
+  it('a refused repository and an unusable repository add the server reason; a plain busy 409 does not', () => {
+    expect(problemText('conflict', 'this repository is already in the list')).toBe('The server refused that: this repository is already in the list');
+    expect(problemText('conflict')).toBe('The server refused that.');
+    expect(problemText('busy', 'a run is already active: one run at a time. Stop it or wait until it has ended')).toBe(problemText('busy'));
+    expect(problemText('busy', 'this repository cannot be used now: the path is not a git repository')).toBe(
+      'The run could not start: this repository cannot be used now: the path is not a git repository',
+    );
+    expect(problemText('repo-gone')).toContain('no longer in the list');
+  });
+
+  it('maps the repository calls', () => {
+    expect(problemFor('addRepo', 400)).toBe('bad-request');
+    expect(problemFor('addRepo', 409)).toBe('conflict');
+    expect(problemFor('addRepo', 503)).toBe('conductor-off');
+    expect(problemFor('removeRepo', 409)).toBe('conflict');
+    expect(problemFor('removeRepo', 404)).toBe('repo-gone');
+    expect(problemFor('repos', 503)).toBe('conductor-off');
+    expect(problemFor('startRun', 404)).toBe('repo-gone');
+  });
+
   it('says plainly what 409 means for each action', () => {
     expect(problemText('busy')).toContain('already active');
     expect(problemText('stale')).toContain('already answered');
@@ -67,7 +87,7 @@ describe('problemText and problemReply', () => {
 
   it('no other problem has a link, and every one has a text', () => {
     const all: Problem[] = [
-      'bad-request', 'unauthorized', 'too-large', 'unsupported', 'conductor-off', 'busy', 'stale', 'ended', 'not-found',
+      'bad-request', 'unauthorized', 'too-large', 'unsupported', 'conductor-off', 'busy', 'conflict', 'repo-gone', 'stale', 'ended', 'not-found',
       'run-failed', 'server-error', 'unreachable', 'bad-response',
     ];
     for (const p of all) {

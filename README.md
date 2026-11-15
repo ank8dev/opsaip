@@ -21,7 +21,7 @@ new work, and message teammates.
 ```
 opsaip/
   apps/
-    desktop/      macOS app: an Electron shell around the apps/web build, no UI of its own
+    desktop/      macOS app: an Electron shell around the apps/web build, no UI of its own (one native folder dialog, for Settings > Repositories)
     web/          React web app (Vite + TypeScript) — the Opsaip interface
       src/
         styles/       design tokens (tokens.css) and base styles
@@ -414,7 +414,10 @@ available: the repository endpoints answer 503.
 
 ### Several repositories
 
-Conductor mode can use many repositories. Choose which one a run uses when you start it.
+Conductor mode can use many repositories. Choose which one a run uses when you start it: in the web app,
+Agent mode in the composer shows the repository (a list to choose from when there are several), and a
+Proposed action card from Ask names the repository that will be used and lets you change it until you
+approve. Ask picks the one you named in your question, or the default (else the first) repository.
 
 **Add one:** Settings > Repositories > paste the absolute path of the repository's top folder and
 choose Add (in the desktop app there is also a Choose folder button). Or call

@@ -38,7 +38,7 @@ export type AskProblem =
  * without Approve.
  */
 export type AskAction =
-  | { type: 'run'; agent: 'claude-code'; title: string; prompt: string }
+  | { type: 'run'; agent: 'claude-code'; title: string; prompt: string; repoId?: string; repoName?: string }
   | { type: 'task'; title: string };
 
 export type AskResult =
@@ -117,7 +117,7 @@ export async function askQuestion(
  */
 export function parseAskAction(value: unknown): AskAction | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const a = value as { type?: unknown; agent?: unknown; title?: unknown; prompt?: unknown };
+  const a = value as { type?: unknown; agent?: unknown; title?: unknown; prompt?: unknown; repoId?: unknown; repoName?: unknown };
   if (typeof a.title !== 'string' || a.title.trim() === '') return null;
   if (a.type === 'task') {
     return a.title.length <= TASK_TITLE_MAX ? { type: 'task', title: a.title } : null;
@@ -126,7 +126,12 @@ export function parseAskAction(value: unknown): AskAction | null {
     if (a.agent !== 'claude-code') return null;
     if (a.title.length > RUN_TITLE_MAX) return null;
     if (typeof a.prompt !== 'string' || a.prompt.trim() === '' || a.prompt.length > RUN_PROMPT_MAX) return null;
-    return { type: 'run', agent: 'claude-code', title: a.title, prompt: a.prompt };
+    // A repository is named by id and name together, or not at all.
+    const named = typeof a.repoId === 'string' && a.repoId.trim() !== '' && typeof a.repoName === 'string' && a.repoName.trim() !== '';
+    return {
+      type: 'run', agent: 'claude-code', title: a.title, prompt: a.prompt,
+      ...(named ? { repoId: (a.repoId as string).slice(0, 100), repoName: (a.repoName as string).slice(0, 200) } : {}),
+    };
   }
   return null;
 }

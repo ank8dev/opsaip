@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { actionCard, approvedPayload, beginApprove, cancelAction, CONDUCTOR_UNKNOWN_NOTE, RUN_ACTIVE_NOTE } from './actions';
+import { actionCard, approvedPayload, beginApprove, cancelAction, chooseRepo, CONDUCTOR_UNKNOWN_NOTE, RUN_ACTIVE_NOTE } from './actions';
 import type { AskAction } from './ask';
 import { CONDUCTOR_OFF_NOTE } from './problems';
 
 const run: AskAction = { type: 'run', agent: 'claude-code', title: 'Fix the tests', prompt: 'Fix the failing tests in notes.py.\nKeep it small.' };
 const task: AskAction = { type: 'task', title: 'Write the README' };
-const on = (extra: object = {}) => ({ ok: true as const, value: { enabled: true as const, repo: 'opsaip-playground', active: false, ...extra } });
+const play = { id: 'default', name: 'opsaip-playground', isDefault: true };
+const web = { id: 'r-web', name: 'web-app', isDefault: false };
+const api = { id: 'r-api', name: 'api', isDefault: false };
+const on = (extra: object = {}) => ({ ok: true as const, value: { enabled: true as const, repos: [play], active: false, ...extra } });
 
 describe('actionCard for a run', () => {
   it('shows the agent, the repo and the exact prompt, waiting for Approve', () => {
     const c = actionCard('I will fix them.', run, on(), false);
-    expect(c).toMatchObject({ kind: 'action', action: 'run', agent: 'Claude Code', repo: 'opsaip-playground', title: run.title, state: 'pending' });
+    expect(c).toMatchObject({ kind: 'action', action: 'run', agent: 'Claude Code', repo: 'opsaip-playground', repoId: 'default', title: run.title, state: 'pending' });
     expect(c.prompt).toBe((run as { prompt: string }).prompt);
   });
 
@@ -32,9 +35,40 @@ describe('actionCard for a run', () => {
     expect(actionCard('x', run, null, false).state).toBe('blocked');
   });
 
-  it('works with an older server that sends no repo or active flag', () => {
-    const c = actionCard('x', run, { ok: true, value: { enabled: true } }, false);
-    expect(c).toMatchObject({ state: 'pending', repo: '' });
+  it('works with an older server that sends no repository list or active flag', () => {
+    const c = actionCard('x', run, { ok: true, value: { enabled: true, repos: [] } }, false);
+    expect(c).toMatchObject({ state: 'pending', repo: '', repoId: '' });
+    expect(approvedPayload(c)).not.toHaveProperty('repoId');
+  });
+
+  it('uses the repository Opsy named, and names it on the card', () => {
+    const named: AskAction = { ...(run as object), repoId: 'r-web', repoName: 'web-app' } as AskAction;
+    const c = actionCard('x', named, on({ repos: [play, web] }), false);
+    expect(c).toMatchObject({ state: 'pending', repo: 'web-app', repoId: 'r-web' });
+  });
+
+  it('is blocked, and says which repository, when the named one is no longer in the list', () => {
+    const named: AskAction = { ...(run as object), repoId: 'r-gone', repoName: 'old-app' } as AskAction;
+    const c = actionCard('x', named, on({ repos: [play, web] }), false);
+    expect(c.state).toBe('blocked');
+    expect(c.note).toContain('“old-app”');
+    expect(c.note).toContain('Settings > Repositories');
+  });
+
+  it('with none named: the default repository, else the first one', () => {
+    expect(actionCard('x', run, on({ repos: [web, play] }), false)).toMatchObject({ repoId: 'default' });
+    expect(actionCard('x', run, on({ repos: [web, api] }), false)).toMatchObject({ repoId: 'r-web', repo: 'web-app' });
+  });
+
+  it('you can change the repository while the card waits, and only then', () => {
+    const card = actionCard('x', run, on({ repos: [play, web] }), false);
+    const changed = chooseRepo(card, web);
+    expect(changed).toMatchObject({ repoId: 'r-web', repo: 'web-app', title: card.title, prompt: card.prompt });
+    expect(approvedPayload(changed)).toEqual({ title: card.title, prompt: card.prompt, repoId: 'r-web' });
+    for (const state of ['blocked', 'approving', 'approved', 'cancelled', 'failed'] as const) {
+      expect(chooseRepo({ ...card, state }, web)).toEqual({ ...card, state });
+    }
+    expect(chooseRepo(actionCard('x', task, null, false), web).repoId).toBe('');
   });
 });
 
@@ -50,7 +84,7 @@ describe('Approve and Cancel', () => {
 
   it('Approve sends exactly the title and prompt on the card, unchanged', () => {
     const odd = actionCard('x', { ...run, title: '  Odd  title ', prompt: '  line 1\n\n  line 2  ' }, on(), false);
-    expect(approvedPayload(odd)).toEqual({ title: '  Odd  title ', prompt: '  line 1\n\n  line 2  ' });
+    expect(approvedPayload(odd)).toEqual({ title: '  Odd  title ', prompt: '  line 1\n\n  line 2  ', repoId: 'default' });
   });
 
   it('Approve goes on once: a second click does nothing', () => {

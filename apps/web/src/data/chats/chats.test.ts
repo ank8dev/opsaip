@@ -65,6 +65,10 @@ describe('storing and restoring a thread', () => {
     expect(restoreWidget(perm)).toMatchObject({ state: 'stale', busy: false });
     expect(restoreWidget({ kind: 'run', runId: 'r', taskId: 't', title: 'T', status: 'running', branch: 'b', lastMessage: '', stopping: true })).toMatchObject({ stopping: false });
     expect(restoreWidget({ kind: 'action', action: 'run', state: 'approving', answer: 'a' })).toMatchObject({ state: 'failed' });
+    // A card saved before repositories existed has no repoId: it is '' (the server chooses), not undefined.
+    expect(restoreWidget({ kind: 'action', action: 'run', state: 'pending', answer: 'a', repo: 'app' })).toMatchObject({ repoId: '', repo: 'app', state: 'pending' });
+    expect(restoreWidget({ kind: 'action', action: 'run', state: 'pending', answer: 'a', repo: 'app', repoId: 'r1' })).toMatchObject({ repoId: 'r1' });
+    expect(restoreWidget({ kind: 'action', action: 'run', state: 'pending', answer: 'a', repoId: 7 })).toMatchObject({ repoId: '' });
   });
 
   it('skips what this version cannot draw instead of crashing', () => {

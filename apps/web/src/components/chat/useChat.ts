@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { askProblemReply, askReply, type AskAction } from '../../data/chat/ask';
 import { createTaskReply } from '../../data/chat/tasks';
 import { liveChipAnswer } from '../../data/chat/liveAnswers';
-import { actionCard, approvedPayload, beginApprove, cancelAction } from '../../data/chat/actions';
+import { actionCard, approvedPayload, beginApprove, cancelAction, chooseRepo } from '../../data/chat/actions';
 import { decideProposal, demoAnswer } from '../../data/chat/demoAnswers';
 import type { ThreadMessage } from '../../data/chat/types';
 import { historyFor } from '../../data/chats/chats';
 import { useChats } from '../../state/chats';
 import { useWorkspace } from '../../state/workspace';
 import { useUi } from '../../state/ui';
+import type { RepoChoice } from '../../data/chat/repos';
 import type { ActionWidget, Widget } from '../../data/chat/types';
 import { useRequests } from './useRequests';
 import { useRun } from './useRun';
@@ -183,10 +184,10 @@ export function useChat(initialMessages: ThreadMessage[] = []) {
       const going = beginApprove(card);
       if (going === null) return; // already decided, or blocked
       setCard(going);
-      const { title, prompt } = approvedPayload(card);
+      const { title, prompt, repoId } = approvedPayload(card);
       let ok: boolean;
       if (card.action === 'run') {
-        ok = await runs.startRunExact(title, prompt);
+        ok = await runs.startRunExact(title, prompt, repoId);
       } else {
         const waiting = push({ kind: 'text', text: 'Creating the task…' }, true);
         const result = await requests.request((signal) => api.createTask(title, signal));
@@ -196,6 +197,12 @@ export function useChat(initialMessages: ThreadMessage[] = []) {
       setCard({ ...going, state: ok ? 'approved' : 'failed' });
     },
     [patch, push, runs.startRunExact, requests.request, api],
+  );
+
+  /** You chose another repository on a Proposed action card that is still waiting. */
+  const pickRepo = useCallback(
+    (messageId: number, repo: RepoChoice) => patch(messageId, (w) => (w.kind === 'action' ? chooseRepo(w, repo) : w)),
+    [patch],
   );
 
   /** Approve or Cancel a proposed change. Only Approve touches the task, and only through changeTask. */
@@ -222,7 +229,7 @@ export function useChat(initialMessages: ThreadMessage[] = []) {
   );
 
   return {
-    messages, busy: busy || requests.busy, send, decide, live: readOnly, serverOffline: source.status === 'offline',
+    messages, busy: busy || requests.busy, send, decide, pickRepo, live: readOnly, serverOffline: source.status === 'offline',
     createTask, ...runs,
   };
 }

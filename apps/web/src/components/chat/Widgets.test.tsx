@@ -7,6 +7,12 @@ vi.mock('../../state/workspace', () => ({
   useWorkspace: () => ({ findTask: (id: string) => (id === 't1' ? { detail: 'exit code 1 <b>' } : null) }),
 }));
 vi.mock('../../state/ui', () => ({ useUi: () => ({ openTask: () => {} }) }));
+// The Picker's menu is a portal into <body>, which static rendering has no use for: a marker with its options.
+vi.mock('../common/Picker', () => ({
+  Picker: (p: { ariaLabel: string; value: string; options: { value: string; label: string; detail?: string }[] }) => (
+    <i data-picker={p.ariaLabel} data-value={p.value}>{p.options.map((o) => [o.label, o.detail].filter(Boolean).join('/')).join('|')}</i>
+  ),
+}));
 
 const noop = () => {};
 const html = (widget: Widget) => renderToStaticMarkup(<WidgetView widget={widget} onDecide={noop} onAnswer={noop} onStop={noop} />);
@@ -81,5 +87,46 @@ describe('text widget with the conductor link', () => {
     const out = html({ kind: 'text', text: 'off', link: { label: 'How to turn it on', href: 'https://github.com/ank8dev/opsaip#conductor-mode-experimental' } });
     expect(out).toContain('target="_blank"');
     expect(out).toContain('rel="noopener noreferrer"');
+  });
+});
+
+describe('Proposed action card: the repository', () => {
+  const card = {
+    kind: 'action', answer: 'I will fix it.', action: 'run', agent: 'Claude Code', repo: 'web-app', repoId: 'r-web',
+    title: 'Fix', prompt: 'Fix the bug.', state: 'pending', note: '',
+  } as const;
+  const repos = [{ id: 'default', name: 'opsaip', isDefault: true }, { id: 'r-web', name: 'web-app', isDefault: false }];
+  const withRepos = (widget: Widget, list = repos) => renderToStaticMarkup(<WidgetView widget={widget} onDecide={noop} onAnswer={noop} onStop={noop} repos={list} onRepo={noop} />);
+
+  it('names the repository that will be used, as text, when there is only one to use', () => {
+    const out = withRepos(card, [repos[1]]);
+    expect(out).toContain('<dt>Repo</dt><dd>web-app</dd>');
+    expect(out).not.toContain('data-picker');
+  });
+
+  it('lets you choose it while the card waits and there are several', () => {
+    const out = withRepos(card);
+    expect(out).toContain('data-picker="Repository for this run"');
+    expect(out).toContain('data-value="r-web"');
+    expect(out).toContain('opsaip/Default|web-app');
+  });
+
+  it('after you decide, or when blocked, it is only text again', () => {
+    for (const state of ['approving', 'approved', 'cancelled', 'failed', 'blocked'] as const) {
+      const out = withRepos({ ...card, state, note: 'x' });
+      expect(out, state).not.toContain('data-picker');
+      expect(out, state).toContain('<dd>web-app</dd>');
+    }
+  });
+
+  it('draws a repository name from the server as text', () => {
+    const out = withRepos({ ...card, repo: EVIL, state: 'approved' }, [repos[1]]);
+    expect(out).not.toContain('<img');
+    expect(out).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  it('shows no Repo line when the server chooses (no list), and none for a task', () => {
+    expect(withRepos({ ...card, repo: '', repoId: '' }, [])).not.toContain('<dt>Repo</dt>');
+    expect(withRepos({ ...card, action: 'task', agent: '', repo: '', repoId: '', prompt: '' })).not.toContain('<dt>Repo</dt>');
   });
 });

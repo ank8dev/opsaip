@@ -135,6 +135,8 @@ export interface ActionWidget extends WidgetBase {
   agent: string;
   /** The repository folder name; '' when unknown or for a task. */
   repo: string;
+  /** Its id, which Approve sends; '' when the server chooses (no list) or for a task. */
+  repoId: string;
   title: string;
   /** The exact prompt that will be sent; '' for a task. */
   prompt: string;

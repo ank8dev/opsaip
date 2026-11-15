@@ -9,8 +9,8 @@ import type { TextWidget } from './types';
 export const CONDUCTOR_DOCS_URL = 'https://github.com/ank8dev/opsaip#conductor-mode-experimental';
 
 export const CONDUCTOR_OFF_NOTE =
-  'Conductor mode is off. To let Opsaip start Claude Code on your Mac, set OPSAIP_CONDUCTOR_DIR to the absolute ' +
-  'path of a git repository on the server and restart it.';
+  'Conductor mode is off. To let Opsaip start Claude Code on your Mac, add a git repository in Settings > Repositories ' +
+  '(or set OPSAIP_CONDUCTOR_DIR on the server to its absolute path and restart it).';
 
 export const CONDUCTOR_DOCS_LINK = { label: 'How to turn it on', href: CONDUCTOR_DOCS_URL } as const;
 
@@ -23,7 +23,9 @@ export type Problem =
   | 'too-large'      // 413
   | 'unsupported'    // 415
   | 'conductor-off'  // 503
-  | 'busy'           // 409 on start: a run is already active
+  | 'busy'           // 409 on start: a run is already active (or its repository fails its checks: reason)
+  | 'conflict'       // 409 on adding or removing a repository (reason)
+  | 'repo-gone'      // 404: the repository is not in the server's list
   | 'stale'          // 409 on a permission answer: already answered, or the run ended
   | 'ended'          // 409 on a follow-up or Stop: the run ended
   | 'not-found'      // 404: the server does not know that run
@@ -33,16 +35,21 @@ export type Problem =
   | 'bad-response';  // 2xx that does not match the contract
 
 /** The calls this app makes. Each maps statuses to problems in its own way. */
-export type Action = 'createTask' | 'conductor' | 'startRun' | 'getRun' | 'transcript' | 'capabilities' | 'upload' | 'chats' | 'about' | 'update' | 'permission' | 'message' | 'cancel';
+export type Action = 'createTask' | 'conductor' | 'startRun' | 'getRun' | 'transcript' | 'capabilities' | 'upload' | 'chats' | 'about' | 'update' | 'permission' | 'message' | 'cancel' | 'repos' | 'addRepo' | 'removeRepo';
 
 /** Status -> problem, per action. Any status not listed is a 'server-error'. */
 export const STATUS_PROBLEM: Record<Action, Readonly<Record<number, Problem>>> = {
   createTask: { 400: 'bad-request', 401: 'unauthorized', 413: 'too-large', 415: 'unsupported' },
   conductor: { 401: 'unauthorized' },
   startRun: {
-    400: 'bad-request', 401: 'unauthorized', 409: 'busy', 413: 'too-large', 415: 'unsupported',
+    400: 'bad-request', 401: 'unauthorized', 404: 'repo-gone', 409: 'busy', 413: 'too-large', 415: 'unsupported',
     500: 'run-failed', 503: 'conductor-off',
   },
+  repos: { 401: 'unauthorized', 503: 'conductor-off' },
+  addRepo: {
+    400: 'bad-request', 401: 'unauthorized', 409: 'conflict', 413: 'too-large', 415: 'unsupported', 503: 'conductor-off',
+  },
+  removeRepo: { 401: 'unauthorized', 404: 'repo-gone', 409: 'conflict', 503: 'conductor-off' },
   getRun: { 401: 'unauthorized', 404: 'not-found', 503: 'conductor-off' },
   transcript: { 401: 'unauthorized', 404: 'not-found', 503: 'conductor-off' },
   capabilities: { 401: 'unauthorized' },
@@ -73,6 +80,8 @@ const PROBLEM_TEXT: Record<Problem, string> = {
   unsupported: 'The server could not read what this page sent. Update the app and the server so they match.',
   'conductor-off': CONDUCTOR_OFF_NOTE,
   busy: 'A run is already active. Opsaip runs one at a time: wait for it to finish, or stop it.',
+  conflict: 'The server refused that.',
+  'repo-gone': 'That repository is no longer in the list. Choose another one.',
   stale: 'That request was already answered, or the run has ended.',
   ended: 'That run has already ended.',
   'not-found': 'The server no longer knows that run. It forgets runs when it restarts.',
@@ -92,11 +101,23 @@ export function serverReason(body: unknown): string | undefined {
   return text.length > MAX_REASON_CHARS ? `${text.slice(0, MAX_REASON_CHARS - 1)}…` : text;
 }
 
-/** The sentence for a problem. A 400 and a failed start add the server's reason. */
+/**
+ * A 409 on start is "a run is already active" or "this repository cannot be used now: ...".
+ * Only the second says something the text above does not, so only it is shown.
+ */
+const REPO_UNUSABLE = /^this repository cannot be used/i;
+
+/** The sentence for a problem. A 400, a failed start, a refused repository and an unusable repository add the server's reason. */
 export function problemText(problem: Problem, reason?: string): string {
   const base = PROBLEM_TEXT[problem];
-  if (reason === undefined || (problem !== 'bad-request' && problem !== 'run-failed')) return base;
-  return problem === 'bad-request' ? `The server could not use that: ${reason}` : `The run could not start: ${reason}`;
+  if (reason === undefined) return base;
+  switch (problem) {
+    case 'bad-request': return `The server could not use that: ${reason}`;
+    case 'run-failed': return `The run could not start: ${reason}`;
+    case 'conflict': return `The server refused that: ${reason}`;
+    case 'busy': return REPO_UNUSABLE.test(reason) ? `The run could not start: ${reason}` : base;
+    default: return base;
+  }
 }
 
 /** Opsy's message for a problem. Conductor off links to the README. */

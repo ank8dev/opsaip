@@ -156,7 +156,7 @@ describe('Agents list', () => {
 describe('Settings', () => {
   const GONE = ['Profile', 'Workspace', 'Approvals', 'Tool servers', 'Sync', 'Repository', 'Slack', 'Notifications', 'Data &amp; privacy'];
 
-  it('has only Server, Appearance and About, and no preview notes', () => {
+  it('has only Server, Repositories (live), Appearance and About, and no preview notes', () => {
     const out = renderToStaticMarkup(<Settings />);
     for (const id of ['set-server', 'set-look', 'set-about']) expect(out).toContain(`id="${id}"`);
     for (const word of GONE) expect(out, word).not.toContain(`>${word}<`);
@@ -164,6 +164,17 @@ describe('Settings', () => {
     expect(out).not.toContain('id="set-data"');
     expect(out).not.toMatch(/Preview|not saved yet|Nothing was written/);
     expect(out).not.toContain('Tessera');
+  });
+
+  it('lists Repositories in the index only while connected to a server', async () => {
+    const { settingsIndex } = await import('./components/settings/Settings');
+    expect(settingsIndex().map(([id]) => id)).not.toContain('set-repos');
+    const live = settingsIndex(true).map(([id]) => id);
+    expect(live.slice(0, 2)).toEqual(['set-server', 'set-repos']);
+    // This file's workspace is live, so the section is on the page (and in its index) here.
+    const page = renderToStaticMarkup(<Settings />);
+    expect(page).toContain('id="set-repos"');
+    expect(page).toContain('>Repositories<');
   });
 
   it('brings the preview sections and their note back with the flag', () => {

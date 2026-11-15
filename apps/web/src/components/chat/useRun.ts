@@ -5,6 +5,7 @@ import { loadRunTasks, rememberRunTask, saveRunTasks } from '../../data/chat/run
 import { conductorStateFrom, isRunActive, runTitleFrom, type ConductorState, type Run } from '../../data/chat/conductor';
 import { problemReply } from '../../data/chat/problems';
 import { permissionAnswered, permissionCardWidget, reconcilePermission, runCardWidget } from '../../data/chat/runWidget';
+import { onReposChanged } from '../../data/chat/repos';
 import type { ServerApi } from '../../data/chat/serverApi';
 import type { Widget } from '../../data/chat/types';
 import { useUi } from '../../state/ui';
@@ -49,7 +50,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
   const [conductor, setConductor] = useState<ConductorState>({ state: 'unknown' });
   const conductorRef = useRef(conductor);
   conductorRef.current = conductor;
-  const [run, setRun] = useState<{ id: string; status: AgentTaskStatus } | null>(null);
+  const [run, setRun] = useState<{ id: string; status: AgentTaskStatus; repoName?: string } | null>(null);
   const track = useRef<Tracked | null>(null);
   const answering = useRef(new Set<string>());
 
@@ -82,6 +83,17 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     if (live && (s === 'unknown' || s === 'failed')) void checkConductor();
   }, [live, checkConductor]);
 
+  // Settings added or removed a repository: read the list again, without the "Checking" state,
+  // so the composer does not flicker. A failed read keeps what is shown.
+  useEffect(() => {
+    if (!live) return;
+    return onReposChanged(() => {
+      void request((signal) => api.conductor(signal), { quiet: true }).then((result) => {
+        if (result?.ok) setConductor(conductorStateFrom(result));
+      });
+    });
+  }, [live, api, request]);
+
   // ---- The run ----
 
   /** Put the run's latest state on screen: its card, and a card for a new permission request. */
@@ -103,7 +115,10 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
       }
 
       if (isRunActive(view.status)) {
-        setRun((prev) => (prev?.id === view.id && prev.status === view.status ? prev : { id: view.id, status: view.status }));
+        setRun((prev) =>
+          prev?.id === view.id && prev.status === view.status && prev.repoName === view.repoName
+            ? prev
+            : { id: view.id, status: view.status, ...(view.repoName === undefined ? {} : { repoName: view.repoName }) });
       } else {
         clearActiveRun();
         track.current = null;
@@ -183,12 +198,12 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
 
   /** Agent mode, no run active: start one. Resolves true if it started. */
   const startRun = useCallback(
-    async (text: string, attachments: readonly string[] = []): Promise<boolean> => {
+    async (text: string, attachments: readonly string[] = [], repoId?: string): Promise<boolean> => {
       if (track.current !== null) return false;
       ui.closeTask(); // the thread is hidden while a task is open
       say(text);
       const waiting = push({ kind: 'text', text: 'Starting Claude Code…' }, true);
-      const result = await request((signal) => api.startRun(text, signal, attachments));
+      const result = await request((signal) => api.startRun(text, signal, attachments, repoId));
       if (result === undefined) return false;
       if (!result.ok) {
         patch(waiting, () => problemReply(result.problem, result.reason));
@@ -209,14 +224,14 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
    * on failure Opsy says why in a message and the card is marked failed.
    */
   const startRunExact = useCallback(
-    async (title: string, prompt: string): Promise<boolean> => {
+    async (title: string, prompt: string, repoId?: string): Promise<boolean> => {
       if (track.current !== null) {
         push(problemReply('busy'));
         return false;
       }
       ui.closeTask();
       const waiting = push({ kind: 'text', text: 'Starting Claude Code…' }, true);
-      const result = await request((signal) => api.startRunExact({ title, prompt }, signal));
+      const result = await request((signal) => api.startRunExact({ title, prompt, ...(repoId === undefined ? {} : { repoId }) }, signal));
       if (result === undefined) return false;
       if (!result.ok) {
         patch(waiting, () => problemReply(result.problem, result.reason));
@@ -313,7 +328,7 @@ export function useRun({ live, api, request, say, push, patch }: Deps) {
     [patch, request, api, applyRun],
   );
 
-  return { conductor, checkConductor, refreshConductor, runActive: run !== null, runActiveNow, sendToRun, runIdForTask, startRun, startRunExact, followUp, stop, answerPermission };
+  return { conductor, checkConductor, refreshConductor, runActive: run !== null, runRepoName: run?.repoName, runActiveNow, sendToRun, runIdForTask, startRun, startRunExact, followUp, stop, answerPermission };
 }
 
 export type RunControls = ReturnType<typeof useRun>;

@@ -10,6 +10,7 @@ import { useUi } from '../../state/ui';
 import { ASK_MAX_QUESTION } from '../../data/chat/ask';
 import { conductorOffNote, RUN_PROMPT_MAX } from '../../data/chat/conductor';
 import { problemText } from '../../data/chat/problems';
+import { effectiveRepoId, type RepoChoice } from '../../data/chat/repos';
 import { TASK_TITLE_MAX } from '../../data/chat/tasks';
 import type { Chat } from '../chat/useChat';
 import { Face } from '../common/Face';
@@ -18,6 +19,8 @@ import { ModeMenu, type ComposeMode } from './ModeMenu';
 import { QuickActions } from './QuickActions';
 import { feature } from '../../features';
 import { useTypingPlaceholder } from './useTypingPlaceholder';
+
+const NO_REPOS: readonly RepoChoice[] = [];
 
 const VERB: Record<ComposeMode, string> = { ask: 'Ask', task: 'Create', message: 'Send', agent: 'Run', announce: 'Announce' };
 const LABEL: Record<ComposeMode, string> = { ask: 'Question', task: 'Task', message: 'Message', agent: 'Agent task', announce: 'Announcement' };
@@ -44,6 +47,8 @@ export function Composer({ task, chat }: ComposerProps) {
   const agents = ws.mcp.filter((c) => c.direction === 'in');
   const [agentId, setAgentId] = useState(agents[0]?.id ?? '');
   const [text, setText] = useState('');
+  // The repository a new run works in. Your choice only counts while it is still in the server's list.
+  const [repoChoice, setRepoChoice] = useState<string | undefined>();
 
   const slack = ws.channels.find((c) => c.channel === 'Slack');
   const slackOk = slack?.status === 'Connected';
@@ -55,6 +60,8 @@ export function Composer({ task, chat }: ComposerProps) {
   const askBusy = chat.busy;
   const viaSlack = mode === 'message' || mode === 'announce';
   const canSend = !viaSlack || slackOk;
+  const repos = chat.conductor.state === 'on' ? chat.conductor.repos : NO_REPOS;
+  const repoId = effectiveRepoId(repos, repoChoice);
 
   // Files: what the server lists for where this message goes (Ask, or Agent mode when it is on).
   const caps = useCapabilities(api, readOnly);
@@ -156,7 +163,7 @@ export function Composer({ task, chat }: ComposerProps) {
       files.clear(false);
     } else if (liveTask || liveAgent) {
       if (askBusy || (liveAgent && chat.conductor.state !== 'on')) return;
-      sendLive(liveTask ? (v) => chat.createTask(v) : following ? chat.followUp : chat.startRun, value);
+      sendLive(liveTask ? (v) => chat.createTask(v) : following ? chat.followUp : (v, ids) => chat.startRun(v, ids, repoId), value);
       inputRef.current?.focus();
       return;
     } else if (mode === 'message') {
@@ -260,6 +267,28 @@ export function Composer({ task, chat }: ComposerProps) {
             <span>{liveTask ? 'Add to' : TO[mode]}</span>
             {liveTask && <span className="op-to-v">your server’s tasks</span>}
             {liveAgent && <span className="op-to-v">Claude Code</span>}
+            {liveAgent && following && chat.runRepoName !== undefined && (
+              <>
+                <span>in</span>
+                <span className="op-to-v op-to-repo">{chat.runRepoName}</span>
+              </>
+            )}
+            {liveAgent && !following && repos.length > 0 && (
+              <>
+                <span>in</span>
+                {repos.length === 1 ? (
+                  <span className="op-to-v op-to-repo">{repos[0].name}</span>
+                ) : (
+                  <Picker
+                    ariaLabel="Repository"
+                    value={repoId ?? ''}
+                    options={repos.map((r) => ({ value: r.id, label: r.name, ...(r.isDefault ? { detail: 'Default' } : {}) }))}
+                    onChange={setRepoChoice}
+                    display={(o) => o.label}
+                  />
+                )}
+              </>
+            )}
             {!readOnly && (mode === 'task' || mode === 'message') && (
               <Picker ariaLabel="Teammate" value={personId} options={personOptions} onChange={setPersonId} display={(o) => o.label} />
             )}
