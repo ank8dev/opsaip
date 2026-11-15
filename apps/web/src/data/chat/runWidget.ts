@@ -38,7 +38,10 @@ export function runCardWidget(title: string, run: Run, stopping = false): RunWid
 export function permissionCardWidget(run: Run): PermissionWidget | null {
   const p = run.permission;
   if (p === undefined) return null;
-  return { kind: 'permission', runId: run.id, permissionId: p.id, tool: p.tool, summary: p.summary, state: 'pending', busy: false, error: '' };
+  return {
+    kind: 'permission', runId: run.id, permissionId: p.id, tool: p.tool, summary: p.summary,
+    ...(p.detail === undefined ? {} : { detail: p.detail }), state: 'pending', busy: false, error: '',
+  };
 }
 
 /**

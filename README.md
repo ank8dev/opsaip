@@ -492,10 +492,13 @@ the list, and an unknown or ambiguous name proposes nothing.
    stops it: SIGTERM, then SIGKILL to its whole process group 5 seconds after.
 
 `GET /v1/runs/:id` returns `{ "run": { "id", "taskId", "status", "branch", "worktree", "repoId", "repoName",
-"permission"?, "lastMessage"? } }`: `permission` is `{ "id", "tool", "summary" }` while a request waits (answer
+"permission"?, "lastMessage"? } }`: `permission` is `{ "id", "tool", "summary", "detail" }` while a request waits (answer
 it with that `id`); `lastMessage` is the agent's latest text, then its final answer, cut at 2000
-characters. `summary` (300 characters at most) and `lastMessage` come from the agent: show them as
-text, never as HTML. A prompt or follow-up is at most 12 000 characters, and the whole request at
+characters. `summary` is one line of 300 characters at most; `detail` is everything the request would
+do, never cut (the Bash command as it will run, or the whole tool input as JSON): Allow approves exactly
+that, so show it before Allow. A request too long to show in full (over 10 000 characters as JSON) is
+denied without asking you, and the agent is told to split it. `summary`, `detail` and `lastMessage`
+come from the agent: show them as text, never as HTML. A prompt or follow-up is at most 12 000 characters, and the whole request at
 most 16 KB (text with many non-ASCII characters reaches 16 KB first). Finished runs are kept in
 memory for `GET` (the last 20) and forgotten when the server restarts; their tasks stay.
 

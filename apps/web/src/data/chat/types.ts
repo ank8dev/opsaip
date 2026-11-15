@@ -107,6 +107,8 @@ export interface PermissionWidget extends WidgetBase {
   permissionId: string;
   tool: string;
   summary: string;
+  /** Everything the request would do, never cut (Allow approves exactly this). Absent from older servers and older saved chats. */
+  detail?: string;
   state: PermissionState;
   /** An answer is on its way: both buttons are disabled. */
   busy: boolean;

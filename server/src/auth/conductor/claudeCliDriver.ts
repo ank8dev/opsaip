@@ -28,7 +28,7 @@ import { randomUUID } from 'node:crypto';
 import { createPermissionBridge, PERMISSION_TOOL, type PermissionBridge } from './permissionBridge';
 import type { AgentDriver, DriverStartOptions, RunEvent } from './driver';
 import { createLineSplitter, parseAgentLine, userMessageLine } from './streamJson';
-import { MAX_TOOL_CHARS, oneLine, summarizeToolCall, truncate } from './toolSummary';
+import { describeToolCall, MAX_DETAIL_JSON_CHARS, MAX_TOOL_CHARS, oneLine, summarizeToolCall, truncate } from './toolSummary';
 
 /** The Claude Code version these flags and shapes were checked with. */
 export const CLAUDE_TESTED_VERSION = '2.1.325';
@@ -40,6 +40,9 @@ export const KILL_GRACE_MS = 5_000;
 const DENY_FLUSH_MS = 250;
 /** After the process exits: how long to wait for the rest of its output. */
 const OUTPUT_DRAIN_MS = 1_000;
+/** The agent's answer for a request too long to show the person in full (MAX_DETAIL_JSON_CHARS). */
+export const TOO_LONG_TO_SHOW =
+  'This request is too long for Opsaip to show the person in full, so it was denied. Split it into shorter steps.';
 
 /**
  * The argv after the command. An array, passed to spawn without a shell. It
@@ -226,11 +229,17 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
               bridge?.decide(request.key, 'deny', 'The run has ended in Opsaip, so this was denied.');
               return;
             }
+            // Allow approves the whole input, so the person must be able to read all of it.
+            const detail = describeToolCall(request.toolName, request.input);
+            if (JSON.stringify(detail).length > MAX_DETAIL_JSON_CHARS) {
+              bridge?.decide(request.key, 'deny', TOO_LONG_TO_SHOW);
+              return;
+            }
             const id = randomUUID();
             pending.set(id, request.key);
             idOfKey.set(request.key, id);
             const tool = truncate(oneLine(request.toolName), MAX_TOOL_CHARS) || 'unknown tool';
-            emit({ type: 'permissionRequested', permission: { id, tool, summary: summarizeToolCall(request.toolName, request.input) } });
+            emit({ type: 'permissionRequested', permission: { id, tool, summary: summarizeToolCall(request.toolName, request.input), detail } });
           },
           onWithdrawn(key) {
             const id = idOfKey.get(key);

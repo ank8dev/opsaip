@@ -62,6 +62,38 @@ export function summarizeToolCall(tool: string, input: unknown): string {
   return truncate(oneLine(text), MAX_SUMMARY_CHARS);
 }
 
+/**
+ * Longest full request (describeToolCall) the person can be shown, counted
+ * as JSON-encoded characters: a saved chat card holds it, and the server
+ * takes a card of at most 20 000 characters (chatStore.ts MAX_WIDGET_CHARS).
+ * A longer request is denied, never shown in part: Allow would approve text
+ * the person could not see.
+ */
+export const MAX_DETAIL_JSON_CHARS = 10_000;
+
+/** Bash input fields that do not change what runs: with only these, the command alone is the whole request. */
+const BASH_SHOWN_FIELDS = new Set(['command', 'description', 'timeout']);
+
+/**
+ * Everything a tool call would do, for the person to read before Allow:
+ * Allow approves exactly this input. For Bash, the command as it will run
+ * (newlines kept), when the input holds nothing else that matters; for
+ * everything else, the whole input as indented JSON. Never cut. Never throws.
+ */
+export function describeToolCall(tool: string, input: unknown): string {
+  if (tool === 'Bash' && typeof input === 'object' && input !== null) {
+    const fields = input as Record<string, unknown>;
+    if (typeof fields.command === 'string' && Object.keys(fields).every((name) => BASH_SHOWN_FIELDS.has(name))) {
+      return fields.command;
+    }
+  }
+  try {
+    return JSON.stringify(input, null, 2) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /** The text with every run of whitespace (newlines included) as one space, trimmed. */
 export function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
