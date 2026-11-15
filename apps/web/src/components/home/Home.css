@@ -60,6 +60,7 @@
 .op-to { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 6px; min-width: 0; font-size: 13px; line-height: 20px; color: var(--op-text-muted); }
 .op-to > * { flex: none; }
 .op-to-v { color: var(--op-text); }
+.op-to-repo { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-to-about { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--op-text-secondary); }
 
 /* Mode: one button that shows the current mode and opens a menu */

@@ -21,7 +21,7 @@ describe('makeServerApi', () => {
       seen.push((init.headers as Record<string, string>).authorization);
       return new Response(JSON.stringify({ enabled: true }), { status: 200 });
     }) as unknown as typeof fetch);
-    expect(await api.conductor(signal)).toEqual({ ok: true, value: { enabled: true } });
+    expect(await api.conductor(signal)).toEqual({ ok: true, value: { enabled: true, repos: [] } });
     expect(seen).toEqual(['Bearer tok-9']);
   });
 });

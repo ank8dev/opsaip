@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAnimate } from 'motion/react';
 import { useUi } from '../../state/ui';
+import { useWorkspace } from '../../state/workspace';
 import { PreviewContext } from './parts';
 import { ProfileSettings, WorkspaceSettings } from './PeopleSections';
 import { AgentSettings, ApprovalSettings, ToolServerSettings } from './AgentSections';
 import { RepositorySettings, SlackSettings, SyncSettings } from './SyncSections';
 import { AppearanceSettings, DataSettings, NotificationSettings } from './PreferenceSections';
 import { ServerSettings } from './ServerSection';
+import { RepositoriesSettings } from './RepositoriesSection';
 import { AboutSettings } from './AboutSection';
 import { feature } from '../../features';
 import './Settings.css';
@@ -26,11 +28,12 @@ const PREVIEW_BEFORE: [string, string][] = [
   ['set-notify', 'Notifications'],
 ];
 
-/** The Settings index, in page order, for the flags as they are now. */
-export function settingsIndex(): [string, string][] {
+/** The Settings index, in page order, for the flags as they are now. Repositories exist only while connected to a server. */
+export function settingsIndex(live = false): [string, string][] {
   const preview = feature('previewSettings');
   return [
     ['set-server', 'Server'],
+    ...(live ? [['set-repos', 'Repositories'] as [string, string]] : []),
     ...(preview ? PREVIEW_BEFORE : []),
     ['set-look', 'Appearance'],
     ...(preview ? [['set-data', 'Data & privacy'] as [string, string]] : []),
@@ -45,11 +48,12 @@ const NOTE = 'Preview — changes apply on this page only and aren’t saved yet
  */
 export function Settings() {
   const ui = useUi();
+  const { readOnly } = useWorkspace();
   const t = ui.motion;
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const previews = feature('previewSettings');
-  const index = settingsIndex();
+  const index = settingsIndex(readOnly);
   const [current, setCurrent] = useState('set-server');
   const [note, setNote] = useState({ text: NOTE, flash: false });
   const noteTimer = useRef(0);
@@ -127,6 +131,7 @@ export function Settings() {
           </nav>
           <div className="op-set-body">
             <ServerSettings />
+            <RepositoriesSettings />
             {previews && (
               <>
                 <ProfileSettings />

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { greeting } from '../../data/selectors';
 import { latestOpsyId, opsyStateFor } from '../../data/chat/opsyState';
+import type { RepoChoice } from '../../data/chat/repos';
 import { useUi } from '../../state/ui';
 import { rise } from '../../styles/motion';
 import { useNow } from '../../lib/useNow';
@@ -9,6 +10,8 @@ import { Opsy } from '../opsy/Opsy';
 import { WidgetView } from './Widgets';
 import type { Chat } from './useChat';
 import './Chat.css';
+
+const NO_REPOS: readonly RepoChoice[] = [];
 
 /** Larger than before: there is only one Opsy on screen, so it can be seen. */
 const AVATAR = 56;
@@ -81,6 +84,8 @@ export function ChatThread({ chat }: { chat: Chat }) {
                       onDecide={(d) => chat.decide(m.id, d)}
                       onAnswer={(allow) => void chat.answerPermission(m.id, allow)}
                       onStop={() => void chat.stop()}
+                      repos={chat.conductor.state === 'on' ? chat.conductor.repos : NO_REPOS}
+                      onRepo={(repo) => chat.pickRepo(m.id, repo)}
                     />
                   </div>
                 </motion.div>

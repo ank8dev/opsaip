@@ -4,6 +4,9 @@
 
 import { problemFor, serverReason, type Action, type Problem } from './problems';
 
+/** The problems whose server reason is kept (and shown as text). */
+const REASON_PROBLEMS: ReadonlySet<Problem> = new Set<Problem>(['bad-request', 'run-failed', 'conflict', 'busy']);
+
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; problem: Problem; reason?: string };
 
 export interface CallOptions<T> {
@@ -50,7 +53,7 @@ export async function callApi<T>({
 
   if (!res.ok) {
     const problem = problemFor(action, res.status);
-    const reason = problem === 'bad-request' || problem === 'run-failed' ? serverReason(body) : undefined;
+    const reason = REASON_PROBLEMS.has(problem) ? serverReason(body) : undefined;
     return reason === undefined ? { ok: false, problem } : { ok: false, problem, reason };
   }
 

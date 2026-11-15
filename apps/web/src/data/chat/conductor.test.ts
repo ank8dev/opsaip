@@ -132,7 +132,7 @@ describe('parseRunResponse', () => {
 
 describe('conductor status', () => {
   it('parses on and off, with the reason as text', () => {
-    expect(parseConductorStatus({ enabled: true, agent: 'claude-code' })).toEqual({ enabled: true });
+    expect(parseConductorStatus({ enabled: true, agent: 'claude-code' })).toEqual({ enabled: true, repos: [] });
     expect(parseConductorStatus({ enabled: false, reason: ' Conductor mode is off. ' })).toEqual({ enabled: false, reason: 'Conductor mode is off.' });
     expect(parseConductorStatus({ enabled: false })).toEqual({ enabled: false });
     expect(parseConductorStatus({ enabled: false, reason: 5 })).toEqual({ enabled: false });
@@ -159,7 +159,8 @@ describe('conductor status', () => {
   });
 
   it('state for the composer', () => {
-    expect(conductorStateFrom({ ok: true, value: { enabled: true } })).toEqual({ state: 'on' });
+    expect(conductorStateFrom({ ok: true, value: { enabled: true, repos: [] } })).toEqual({ state: 'on', repos: [] });
+    expect(conductorStateFrom({ ok: true, value: { enabled: true, repos: [{ id: 'a', name: 'app', isDefault: true }] } })).toEqual({ state: 'on', repos: [{ id: 'a', name: 'app', isDefault: true }] });
     expect(conductorStateFrom({ ok: true, value: { enabled: false } })).toEqual({ state: 'off' });
     expect(conductorStateFrom({ ok: true, value: { enabled: false, reason: 'r' } })).toEqual({ state: 'off', reason: 'r' });
     expect(conductorStateFrom({ ok: false, problem: 'unreachable' })).toEqual({ state: 'failed', problem: 'unreachable' });
@@ -168,7 +169,8 @@ describe('conductor status', () => {
   it('the off note says how to turn it on, with the link', () => {
     const n = conductorOffNote('because');
     expect(n.text).toBe(CONDUCTOR_OFF_NOTE);
-    expect(n.text).toContain('set OPSAIP_CONDUCTOR_DIR to the absolute path of a git repository on the server and restart it');
+    expect(n.text).toContain('add a git repository in Settings > Repositories');
+    expect(n.text).toContain('OPSAIP_CONDUCTOR_DIR');
     expect(n.reason).toBe('because');
     expect(n.link).toEqual({ label: 'How to turn it on', href: CONDUCTOR_DOCS_URL });
     expect(conductorOffNote().reason).toBeUndefined();
@@ -204,8 +206,8 @@ describe('startRun', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.problem).toBe(problem);
-      // Only a 400 and a failed start carry the server's reason.
-      expect(r.reason).toBe(problem === 'bad-request' || problem === 'run-failed' ? 'the reason' : undefined);
+      // Only a 400, a failed start and a 409 carry the server's reason.
+      expect(r.reason).toBe(['bad-request', 'run-failed', 'busy'].includes(problem) ? 'the reason' : undefined);
     }
   });
 
@@ -307,9 +309,52 @@ describe('startRunExact and the conductor status extras', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('reads repo and active from GET /v1/conductor, and works without them', () => {
-    expect(parseConductorStatus({ enabled: true, repo: 'play', active: true })).toEqual({ enabled: true, repo: 'play', active: true });
-    expect(parseConductorStatus({ enabled: true })).toEqual({ enabled: true });
+  it('reads repos and active from GET /v1/conductor, and works without them', () => {
+    expect(parseConductorStatus({ enabled: true, repos: [{ id: 'default', name: 'play', isDefault: true }], active: true })).toEqual({
+      enabled: true, repos: [{ id: 'default', name: 'play', isDefault: true }], active: true,
+    });
+    expect(parseConductorStatus({ enabled: true })).toEqual({ enabled: true, repos: [] });
+  });
+
+  it('keeps only well-formed repositories, cut to a limit, and never a path', () => {
+    const long = 'x'.repeat(500);
+    const status = parseConductorStatus({
+      enabled: true,
+      repos: [{ id: 'a', name: 'app', isDefault: false, path: '/Users/me/app' }, { id: '', name: 'no id' }, { id: 'b' }, 7, null, { id: 'c', name: long }],
+    });
+    expect(status).toEqual({ enabled: true, repos: [{ id: 'a', name: 'app', isDefault: false }, { id: 'c', name: 'x'.repeat(200), isDefault: false }] });
+    expect(JSON.stringify(status)).not.toContain('/Users/me');
+    expect(parseConductorStatus({ enabled: true, repos: 'nope' })).toEqual({ enabled: true, repos: [] });
+  });
+
+  it('reads the repository name of a run', () => {
+    const run = { id: 'r', taskId: 't', status: 'running', branch: 'b' };
+    expect(parseRunResponse({ run: { ...run, repoName: 'app' } })).toMatchObject({ repoName: 'app' });
+    expect(parseRunResponse({ run })).not.toHaveProperty('repoName');
+    expect(parseRunResponse({ run: { ...run, repoName: 5 } })).not.toHaveProperty('repoName');
+  });
+
+  it('startRun sends repoId, and sends none when you chose none', async () => {
+    const okRun = { run: { id: 'r', taskId: 't', status: 'running', branch: 'b' } };
+    const first = fakeFetch(json(201, okRun));
+    await startRun('t', 'do it', signal, first.impl, [], 'repo-1');
+    expect(JSON.parse(String(first.calls[0].init.body))).toEqual({ title: 'do it', prompt: 'do it', repoId: 'repo-1' });
+    const second = fakeFetch(json(201, okRun));
+    await startRun('t', 'do it', signal, second.impl);
+    expect(JSON.parse(String(second.calls[0].init.body))).toEqual({ title: 'do it', prompt: 'do it' });
+  });
+
+  it('does not send an empty or too long repoId', async () => {
+    const { impl, calls } = fakeFetch(json(201, {}));
+    expect(await startRunExact('t', { title: 'x', prompt: 'x', repoId: '' }, signal, impl)).toMatchObject({ ok: false, problem: 'bad-request' });
+    expect(await startRunExact('t', { title: 'x', prompt: 'x', repoId: 'r'.repeat(101) }, signal, impl)).toMatchObject({ ok: false, problem: 'bad-request' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a 404 on start is a repository that is gone; a 409 about the repository keeps the server reason', async () => {
+    expect(await startRun('t', 'x', signal, fakeFetch(json(404, { error: 'repository not found' })).impl, [], 'gone')).toEqual({ ok: false, problem: 'repo-gone' });
+    const unusable = await startRun('t', 'x', signal, fakeFetch(json(409, { error: 'this repository cannot be used now: the path is not a git repository' })).impl);
+    expect(unusable).toEqual({ ok: false, problem: 'busy', reason: 'this repository cannot be used now: the path is not a git repository' });
   });
 });
 

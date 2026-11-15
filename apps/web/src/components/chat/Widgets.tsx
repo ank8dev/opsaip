@@ -10,6 +10,8 @@ import { STATUS_LABEL } from '../../data/serverTasks';
 import { useUi } from '../../state/ui';
 import { useWorkspace } from '../../state/workspace';
 import { useNow } from '../../lib/useNow';
+import type { RepoChoice } from '../../data/chat/repos';
+import { Picker } from '../common/Picker';
 import { StatusDot } from '../common/StatusDot';
 
 // What Opsy puts in a message. Everything here is drawn as React text nodes:
@@ -27,10 +29,13 @@ interface ViewProps {
   onAnswer: (allow: boolean) => void;
   /** Stop the run. */
   onStop: () => void;
+  /** The repositories a Proposed action can choose from (Agent mode on), and what to do when you choose one. */
+  repos?: readonly RepoChoice[];
+  onRepo?: (repo: RepoChoice) => void;
 }
 
 /** One widget, with its source line underneath. */
-export function WidgetView({ widget, onDecide, onAnswer, onStop }: ViewProps) {
+export function WidgetView({ widget, onDecide, onAnswer, onStop, repos = [], onRepo = () => {} }: ViewProps) {
   return (
     <div className="op-w">
       {widget.kind === 'brief' && <Brief widget={widget} />}
@@ -39,7 +44,7 @@ export function WidgetView({ widget, onDecide, onAnswer, onStop }: ViewProps) {
       {widget.kind === 'agent' && <AgentCard widget={widget} />}
       {widget.kind === 'proposal' && <Proposal widget={widget} onDecide={onDecide} />}
       {widget.kind === 'text' && <Text widget={widget} />}
-      {widget.kind === 'action' && <ActionCard widget={widget} onDecide={onDecide} />}
+      {widget.kind === 'action' && <ActionCard widget={widget} onDecide={onDecide} repos={repos} onRepo={onRepo} />}
       {widget.kind === 'run' && <RunCard widget={widget} onStop={onStop} />}
       {widget.kind === 'permission' && <PermissionCard widget={widget} onAnswer={onAnswer} />}
       {widget.source && <p className="op-w-source">{widget.source}</p>}
@@ -238,7 +243,11 @@ const TASK_OUTCOME: Record<'approved' | 'cancelled' | 'failed', string> = {
  * until Approve. When Agent mode is off or a run is active there is no Approve,
  * only the reason. Everything is text.
  */
-function ActionCard({ widget, onDecide }: Props<ActionWidget> & { onDecide: (d: 'approve' | 'cancel') => void }) {
+function ActionCard({ widget, onDecide, repos, onRepo }: Props<ActionWidget> & {
+  onDecide: (d: 'approve' | 'cancel') => void;
+  repos: readonly RepoChoice[];
+  onRepo: (repo: RepoChoice) => void;
+}) {
   const outcome = useRef<HTMLParagraphElement>(null);
   const was = useRef(widget.state);
   // The buttons go away once you decide: keep focus in the card, on the outcome.
@@ -256,7 +265,23 @@ function ActionCard({ widget, onDecide }: Props<ActionWidget> & { onDecide: (d: 
         <p className="op-w-label">Proposed action</p>
         <dl className="op-w-diff op-w-act-facts">
           <div><dt>{run ? 'Agent' : 'Action'}</dt><dd>{run ? widget.agent : 'Create a task'}</dd></div>
-          {run && widget.repo !== '' && <div><dt>Repo</dt><dd>{widget.repo}</dd></div>}
+          {run && widget.repo !== '' && (
+            <div>
+              <dt>Repo</dt>
+              <dd>
+                {/* With several to choose from, you can change it until you decide; the card then names the one that was used. */}
+                {widget.state === 'pending' && repos.length > 1 ? (
+                  <Picker
+                    ariaLabel="Repository for this run"
+                    value={widget.repoId}
+                    options={repos.map((r) => ({ value: r.id, label: r.name, ...(r.isDefault ? { detail: 'Default' } : {}) }))}
+                    onChange={(id) => { const r = repos.find((x) => x.id === id); if (r) onRepo(r); }}
+                    display={(o) => o.label}
+                  />
+                ) : widget.repo}
+              </dd>
+            </div>
+          )}
           <div><dt>{run ? 'Title' : 'Task'}</dt><dd className="op-w-after">{widget.title}</dd></div>
         </dl>
         {run && (

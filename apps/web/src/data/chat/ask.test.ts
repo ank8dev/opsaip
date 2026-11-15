@@ -184,6 +184,15 @@ describe('the action in an answer', () => {
     expect(parseAskAction({ type: 'task', title: 'Write docs', prompt: 'ignored' })).toEqual({ type: 'task', title: 'Write docs' });
   });
 
+  it('keeps the repository the server named, by id and name together', () => {
+    expect(parseAskAction({ ...run, repoId: 'r1', repoName: 'web-app' })).toEqual({ ...run, repoId: 'r1', repoName: 'web-app' });
+    for (const half of [{ repoId: 'r1' }, { repoName: 'web-app' }, { repoId: ' ', repoName: 'x' }, { repoId: 4, repoName: 'x' }]) {
+      const parsed = parseAskAction({ ...run, ...half });
+      expect(parsed).toEqual(run);
+    }
+    expect(parseAskAction({ type: 'task', title: 'T', repoId: 'r1', repoName: 'x' })).toEqual({ type: 'task', title: 'T' });
+  });
+
   it('refuses what the server would refuse, and what is not for Claude Code', () => {
     for (const bad of [
       'run', 7, [], { type: 'run' }, { ...run, agent: 'codex' }, { ...run, agent: undefined }, { ...run, title: ' ' },

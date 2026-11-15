@@ -12,15 +12,16 @@ import type { ThreadMessage } from './types';
 import { fetchAbout, fetchUpdate, type About, type UpdateInfo } from '../about';
 import { fetchCapabilities, type AttachPurpose, type Capabilities } from '../attachments/capabilities';
 import { deleteUpload, uploadFile, type UploadResult } from '../attachments/upload';
+import { addRepo, fetchRepos, removeRepo, type RepoEntry } from './repos';
 import { fetchTranscript, type Transcript } from './transcript';
 
 export interface ServerApi {
   createTask: (text: string, signal: AbortSignal) => Promise<ApiResult<Task>>;
   conductor: (signal: AbortSignal) => Promise<ApiResult<ConductorStatus>>;
-  /** `attachments`: upload ids for this message (Agent mode). */
-  startRun: (text: string, signal: AbortSignal, attachments?: readonly string[]) => Promise<ApiResult<Run>>;
-  /** Start a run with exactly this title and prompt (a Proposed action card's Approve). */
-  startRunExact: (run: { title: string; prompt: string; attachments?: readonly string[] }, signal: AbortSignal) => Promise<ApiResult<Run>>;
+  /** `attachments`: upload ids for this message (Agent mode). `repoId`: the repository to work in. */
+  startRun: (text: string, signal: AbortSignal, attachments?: readonly string[], repoId?: string) => Promise<ApiResult<Run>>;
+  /** Start a run with exactly this title, prompt and repository (a Proposed action card's Approve). */
+  startRunExact: (run: { title: string; prompt: string; attachments?: readonly string[]; repoId?: string }, signal: AbortSignal) => Promise<ApiResult<Run>>;
   getRun: (id: string, signal: AbortSignal) => Promise<ApiResult<Run>>;
   transcript: (id: string, signal: AbortSignal) => Promise<ApiResult<Transcript>>;
   answerPermission: (id: string, permissionId: string, allow: boolean, signal: AbortSignal) => Promise<ApiResult<Run>>;
@@ -39,13 +40,17 @@ export interface ServerApi {
   upload: (purpose: AttachPurpose, file: Blob & { name: string }, signal: AbortSignal) => Promise<UploadResult>;
   deleteUpload: (id: string) => Promise<void>;
   cancelRun: (id: string, signal: AbortSignal) => Promise<ApiResult<Run>>;
+  /** The repositories Conductor mode can use (with paths): Settings > Repositories. */
+  repos: (signal: AbortSignal) => Promise<ApiResult<RepoEntry[]>>;
+  addRepo: (path: string, signal: AbortSignal) => Promise<ApiResult<RepoEntry>>;
+  removeRepo: (id: string, signal: AbortSignal) => Promise<ApiResult<true>>;
 }
 
 export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): ServerApi {
   if (token === null) {
     const none = <T>(): Promise<ApiResult<T>> => Promise.resolve({ ok: false, problem: 'unauthorized' });
     return {
-      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none, about: none, update: none,
+      createTask: none, conductor: none, startRun: none, startRunExact: none, getRun: none, transcript: none, answerPermission: none, followUp: none, cancelRun: none, capabilities: none, about: none, update: none, repos: none, addRepo: none, removeRepo: none,
       listChats: none, createChat: none, renameChat: none, deleteChat: none, loadMessages: none, saveMessages: none,
       upload: () => Promise.resolve({ ok: false, problem: 'unauthorized' }), deleteUpload: () => Promise.resolve(),
     };
@@ -53,7 +58,7 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
   return {
     createTask: (text, signal) => createTask(token, text, signal, fetchImpl),
     conductor: (signal) => fetchConductorStatus(token, signal, fetchImpl),
-    startRun: (text, signal, attachments) => startRun(token, text, signal, fetchImpl, attachments),
+    startRun: (text, signal, attachments, repoId) => startRun(token, text, signal, fetchImpl, attachments, repoId),
     startRunExact: (run, signal) => startRunExact(token, run, signal, fetchImpl),
     getRun: (id, signal) => fetchRun(token, id, signal, fetchImpl),
     transcript: (id, signal) => fetchTranscript(token, id, signal, fetchImpl),
@@ -71,5 +76,8 @@ export function makeServerApi(token: string | null, fetchImpl?: typeof fetch): S
     upload: (purpose, file, signal) => uploadFile(token, purpose, file, signal, fetchImpl),
     deleteUpload: (id) => deleteUpload(token, id, fetchImpl),
     cancelRun: (id, signal) => cancelRun(token, id, signal, fetchImpl),
+    repos: (signal) => fetchRepos(token, signal, fetchImpl),
+    addRepo: (path, signal) => addRepo(token, path, signal, fetchImpl),
+    removeRepo: (id, signal) => removeRepo(token, id, signal, fetchImpl),
   };
 }

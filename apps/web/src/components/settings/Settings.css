@@ -90,3 +90,13 @@
 
 .op-about-v { font-family: var(--op-mono); font-size: 12px; line-height: 20px; color: var(--op-text-secondary); text-align: right; overflow-wrap: anywhere; }
 .op-about-v a { color: var(--op-text); text-decoration: underline; text-underline-offset: 2px; font-family: var(--op-sans); }
+
+/* Repositories */
+.op-repo-path { font-family: var(--op-mono); font-size: 12px; overflow-wrap: anywhere; }
+.op-repo-problem { display: block; margin-top: 4px; color: var(--op-error); }
+.op-repo-status { margin: 8px 0 0; min-height: 18px; }
+.op-repo-status:focus-visible { outline: 2px solid var(--op-focus); outline-offset: 2px; border-radius: 4px; }
+.op-repo-item { border-top: 1px solid var(--op-border); }
+.op-repo-item:first-child { border-top: 0; }
+.op-repo-item > .op-set-row { border-top: 0; }
+.op-repo-form { flex: 1 1 100%; min-width: 0; }

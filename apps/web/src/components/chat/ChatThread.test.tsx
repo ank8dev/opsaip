@@ -16,7 +16,7 @@ vi.mock('../opsy/Opsy', () => ({ Opsy: ({ state, size }: { state: string; size: 
 
 const text = (id: number, t: string): ThreadMessage => ({ id, from: 'opsy', widget: { kind: 'text', text: t } });
 const chat = (messages: ThreadMessage[], serverOffline = false) =>
-  ({ messages, live: true, serverOffline, decide: () => {}, answerPermission: async () => {}, stop: async () => {} }) as unknown as Chat;
+  ({ messages, live: true, serverOffline, conductor: { state: 'unknown' }, decide: () => {}, pickRepo: () => {}, answerPermission: async () => {}, stop: async () => {} }) as unknown as Chat;
 const opsies = (html: string) => [...html.matchAll(/data-opsy="(\w+)" data-size="(\d+)"/g)].map((m) => ({ state: m[1], size: Number(m[2]) }));
 
 describe('ChatThread: one Opsy', () => {

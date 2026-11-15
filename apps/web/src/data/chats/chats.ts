@@ -73,7 +73,10 @@ export function restoreWidget(raw: unknown): Widget | null {
   const w = raw as unknown as Widget;
   if (w.kind === 'permission') return { ...w, state: w.state === 'pending' ? 'stale' : w.state, busy: false };
   if (w.kind === 'run') return { ...w, stopping: false };
-  if (w.kind === 'action') return { ...w, state: w.state === 'approving' ? 'failed' : w.state };
+  if (w.kind === 'action') {
+    // A card saved before repositories had no repoId.
+    return { ...w, repoId: typeof w.repoId === 'string' ? w.repoId : '', state: w.state === 'approving' ? 'failed' : w.state };
+  }
   return w;
 }
 

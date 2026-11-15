@@ -7,6 +7,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   nativeTheme,
   protocol,
@@ -17,6 +18,7 @@ import {
 import { forwardApiRequest, keepSentHeaders } from './apiProxy.js';
 import { APP_SCHEME, START_URL, fileHeaders, isApiPath, resolveAppFile } from './appFiles.js';
 import { parseConfig, type DesktopConfig } from './config.js';
+import { chosenFolder, isTrustedSender, PICK_FOLDER_CHANNEL } from './folderPicker.js';
 import {
   externalUrl,
   isAllowedApiRequest,
@@ -105,6 +107,8 @@ function createWindow(): void {
     // The web app's --op-bg, so there is no white flash before it paints.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0B0B0B' : '#FAFAFA',
     webPreferences: {
+      // Gives the page one function: the native folder picker (see folderPicker.ts).
+      preload: path.join(import.meta.dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -135,6 +139,20 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-redirect', keepInApp);
 });
 
+/** Settings > Repositories > Choose folder: a native dialog for one folder. Only the app's own page may ask. */
+function handleFolderPicker(): void {
+  ipcMain.handle(PICK_FOLDER_CHANNEL, async (event) => {
+    if (!isTrustedSender(event.senderFrame?.url)) return null;
+    const options: Electron.OpenDialogOptions = {
+      title: 'Choose a git repository',
+      buttonLabel: 'Choose',
+      properties: ['openDirectory'],
+    };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return chosenFolder(win === null ? await dialog.showOpenDialog(options) : await dialog.showOpenDialog(win, options));
+  });
+}
+
 app.whenReady().then(async () => {
   const config = await loadConfig();
   if (config.problem !== undefined) {
@@ -146,6 +164,7 @@ app.whenReady().then(async () => {
     });
   }
 
+  handleFolderPicker();
   lockDownWindowSession(session.defaultSession);
   serveApp(webRoot(), config.serverBase, createApiSession(config.serverBase));
 

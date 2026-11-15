@@ -9,6 +9,7 @@
 import type { AgentTaskStatus } from '@opsaip/core';
 import { STATUS_LABEL } from '../serverTasks';
 import { CONDUCTOR_DOCS_LINK, CONDUCTOR_OFF_NOTE, MAX_REASON_CHARS, type Problem } from './problems';
+import { parseRepoChoice, type RepoChoice } from './repos';
 import { callApi, type ApiResult } from './serverCall';
 
 export const CONDUCTOR_PATH = '/v1/conductor';
@@ -18,6 +19,8 @@ export const RUNS_PATH = '/v1/runs';
 export const RUN_TITLE_MAX = 200;
 /** The server's limit on a prompt or a follow-up, in UTF-16 code units. */
 export const RUN_PROMPT_MAX = 12_000;
+/** The server's limit on a repository id. */
+const REPO_ID_MAX = 100;
 /** Limits the server applies to what the agent sends; the page cuts to the same, to be safe. */
 const MAX_LAST_MESSAGE = 2000;
 const MAX_SUMMARY = 300;
@@ -50,11 +53,14 @@ export function promptProblem(text: string): string | undefined {
 // ---- What the server sends ----
 
 /**
- * GET /v1/conductor. When on: `repo` is the folder name of the repository runs work in
- * (never a path) and `active` says whether a run is active now. Older servers send neither.
+ * GET /v1/conductor. When on: `repos` are the repositories a run can work in (folder names,
+ * never paths; the default one is marked) and `active` says whether a run is active now.
+ * A server that sends no list gives an empty one: the server then picks the repository.
  */
-export type ConductorStatus = { enabled: true; repo?: string; active?: boolean } | { enabled: false; reason?: string };
+export type ConductorStatus = { enabled: true; repos: RepoChoice[]; active?: boolean } | { enabled: false; reason?: string };
 
+/** The server allows 51 at most; a longer list is cut. */
+const MAX_REPOS = 100;
 /** The longest repo name kept for display. */
 const MAX_REPO_CHARS = 200;
 
@@ -77,6 +83,8 @@ export interface Run {
   permission?: RunPermission;
   /** The agent's latest text, then its final answer. From the agent: show as text. */
   lastMessage?: string;
+  /** The folder name of the repository it works in. Older servers send none. */
+  repoName?: string;
 }
 
 /** Not done and not failed: the run can still need polling, a follow-up or a Stop. */
@@ -87,8 +95,8 @@ export function isRunActive(status: AgentTaskStatus): boolean {
 export function parseConductorStatus(body: unknown): ConductorStatus | undefined {
   if (!isRecord(body) || typeof body.enabled !== 'boolean') return undefined;
   if (body.enabled) {
-    const status: { enabled: true; repo?: string; active?: boolean } = { enabled: true };
-    if (typeof body.repo === 'string' && body.repo.trim() !== '') status.repo = body.repo.trim().slice(0, MAX_REPO_CHARS);
+    const repos = Array.isArray(body.repos) ? body.repos.slice(0, MAX_REPOS).flatMap((r) => parseRepoChoice(r) ?? []) : [];
+    const status: { enabled: true; repos: RepoChoice[]; active?: boolean } = { enabled: true, repos };
     if (typeof body.active === 'boolean') status.active = body.active;
     return status;
   }
@@ -99,7 +107,7 @@ export function parseConductorStatus(body: unknown): ConductorStatus | undefined
 /** Read `{ run }` from a 2xx body. undefined if it is not one. Extra fields are ignored. */
 export function parseRunResponse(body: unknown): Run | undefined {
   if (!isRecord(body) || !isRecord(body.run)) return undefined;
-  const { id, taskId, status, branch, permission, lastMessage } = body.run;
+  const { id, taskId, status, branch, permission, lastMessage, repoName } = body.run;
   if (typeof id !== 'string' || id.trim() === '') return undefined;
   if (typeof taskId !== 'string' || typeof branch !== 'string') return undefined;
   // hasOwn, not `in`: "toString" must not count as a status.
@@ -116,6 +124,7 @@ export function parseRunResponse(body: unknown): Run | undefined {
     if (typeof lastMessage !== 'string') return undefined;
     run.lastMessage = lastMessage.slice(0, MAX_LAST_MESSAGE);
   }
+  if (typeof repoName === 'string' && repoName.trim() !== '') run.repoName = repoName.slice(0, MAX_REPO_CHARS);
   return run;
 }
 
@@ -128,11 +137,11 @@ export function fetchConductorStatus(token: string, signal: AbortSignal, fetchIm
   return callApi({ token, action: 'conductor', path: CONDUCTOR_PATH, method: 'GET', signal, fetchImpl, parse: parseConductorStatus });
 }
 
-/** POST /v1/runs: the title is the first line of `text`, the prompt is all of it. */
+/** POST /v1/runs: the title is the first line of `text`, the prompt is all of it. `repoId`: the repository to work in. */
 export function startRun(
-  token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch, attachments: readonly string[] = [],
+  token: string, text: string, signal: AbortSignal, fetchImpl?: typeof fetch, attachments: readonly string[] = [], repoId?: string,
 ): Promise<ApiResult<Run>> {
-  return startRunExact(token, { title: runTitleFrom(text), prompt: text, attachments }, signal, fetchImpl);
+  return startRunExact(token, { title: runTitleFrom(text), prompt: text, attachments, ...(repoId === undefined ? {} : { repoId }) }, signal, fetchImpl);
 }
 
 /**
@@ -141,15 +150,25 @@ export function startRun(
  * is a 'bad-request' without a request.
  */
 export async function startRunExact(
-  token: string, run: { title: string; prompt: string; /** Upload ids (purpose agent). */ attachments?: readonly string[] }, signal: AbortSignal, fetchImpl?: typeof fetch,
+  token: string,
+  run: {
+    title: string; prompt: string;
+    /** Upload ids (purpose agent). */ attachments?: readonly string[];
+    /** The repository to work in (an id from GET /v1/repos). Left out: the server uses its default one. */ repoId?: string;
+  },
+  signal: AbortSignal, fetchImpl?: typeof fetch,
 ): Promise<ApiResult<Run>> {
   const problem = promptProblem(run.prompt);
   if (problem !== undefined) return { ok: false, problem: 'bad-request', reason: problem };
   if (run.title.trim() === '' || run.title.length > RUN_TITLE_MAX) {
     return { ok: false, problem: 'bad-request', reason: `a title is 1 to ${RUN_TITLE_MAX} characters.` };
   }
+  if (run.repoId !== undefined && (run.repoId === '' || run.repoId.length > REPO_ID_MAX)) {
+    return { ok: false, problem: 'bad-request', reason: 'choose a repository.' };
+  }
   return callApi({
-    token, action: 'startRun', path: RUNS_PATH, method: 'POST', json: { title: run.title, prompt: run.prompt, ...(run.attachments && run.attachments.length > 0 ? { attachments: run.attachments } : {}) },
+    token, action: 'startRun', path: RUNS_PATH, method: 'POST',
+    json: { title: run.title, prompt: run.prompt, ...(run.repoId === undefined ? {} : { repoId: run.repoId }), ...(run.attachments && run.attachments.length > 0 ? { attachments: run.attachments } : {}) },
     signal, fetchImpl, parse: parseRunResponse,
   });
 }
@@ -191,13 +210,13 @@ export function cancelRun(token: string, id: string, signal: AbortSignal, fetchI
 export type ConductorState =
   | { state: 'unknown' }
   | { state: 'checking' }
-  | { state: 'on' }
+  | { state: 'on'; repos: RepoChoice[] }
   | { state: 'off'; reason?: string }
   | { state: 'failed'; problem: Problem };
 
 export function conductorStateFrom(result: ApiResult<ConductorStatus>): ConductorState {
   if (!result.ok) return { state: 'failed', problem: result.problem };
-  return result.value.enabled ? { state: 'on' } : result.value.reason === undefined ? { state: 'off' } : { state: 'off', reason: result.value.reason };
+  return result.value.enabled ? { state: 'on', repos: result.value.repos } : result.value.reason === undefined ? { state: 'off' } : { state: 'off', reason: result.value.reason };
 }
 
 /** What the composer shows in Agent mode while Conductor mode is off: plain text and one link. */

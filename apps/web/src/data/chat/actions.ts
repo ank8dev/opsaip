@@ -6,6 +6,7 @@
 import type { AskAction } from './ask';
 import type { ConductorStatus } from './conductor';
 import { CONDUCTOR_DOCS_LINK, CONDUCTOR_OFF_NOTE } from './problems';
+import { defaultRepoId, type RepoChoice } from './repos';
 import type { ApiResult } from './serverCall';
 import type { ActionWidget } from './types';
 
@@ -28,20 +29,37 @@ export function actionCard(
   runActiveHere: boolean,
 ): ActionWidget {
   if (action.type === 'task') {
-    return { kind: 'action', answer, action: 'task', agent: '', repo: '', title: action.title, prompt: '', state: 'pending', note: '' };
+    return { kind: 'action', answer, action: 'task', agent: '', repo: '', repoId: '', title: action.title, prompt: '', state: 'pending', note: '' };
   }
   const base = { kind: 'action' as const, answer, action: 'run' as const, agent: AGENT_NAME, title: action.title, prompt: action.prompt };
   if (conductor === null || !conductor.ok) {
-    return { ...base, repo: '', state: 'blocked', note: CONDUCTOR_UNKNOWN_NOTE };
+    return { ...base, repo: '', repoId: '', state: 'blocked', note: CONDUCTOR_UNKNOWN_NOTE };
   }
   const status = conductor.value;
   if (!status.enabled) {
     const note = status.reason === undefined ? CONDUCTOR_OFF_NOTE : `${CONDUCTOR_OFF_NOTE} ${status.reason}`;
-    return { ...base, repo: '', state: 'blocked', note, link: { ...CONDUCTOR_DOCS_LINK } };
+    return { ...base, repo: '', repoId: '', state: 'blocked', note, link: { ...CONDUCTOR_DOCS_LINK } };
   }
-  const repo = status.repo ?? '';
-  if (status.active === true || runActiveHere) return { ...base, repo, state: 'blocked', note: RUN_ACTIVE_NOTE };
-  return { ...base, repo, state: 'pending', note: '' };
+  // The repository: the one Opsy named, else the default one. The card shows it and, with several, lets you change it.
+  let chosen: RepoChoice | undefined;
+  if (action.repoId !== undefined) {
+    chosen = status.repos.find((r) => r.id === action.repoId);
+    if (chosen === undefined) {
+      const name = action.repoName === undefined ? 'that repository' : `“${action.repoName}”`;
+      return { ...base, repo: action.repoName ?? '', repoId: '', state: 'blocked', note: `${name} is no longer in Settings > Repositories.` };
+    }
+  } else {
+    const id = defaultRepoId(status.repos);
+    chosen = status.repos.find((r) => r.id === id);
+  }
+  const repo = { repo: chosen?.name ?? '', repoId: chosen?.id ?? '' };
+  if (status.active === true || runActiveHere) return { ...base, ...repo, state: 'blocked', note: RUN_ACTIVE_NOTE };
+  return { ...base, ...repo, state: 'pending', note: '' };
+}
+
+/** You chose another repository on a card still waiting. Nothing else about the card changes. */
+export function chooseRepo(card: ActionWidget, repo: RepoChoice): ActionWidget {
+  return card.state === 'pending' && card.action === 'run' ? { ...card, repoId: repo.id, repo: repo.name } : card;
 }
 
 /** Cancel: only a card still waiting can be cancelled; nothing is sent. */
@@ -54,7 +72,7 @@ export function beginApprove(card: ActionWidget): ActionWidget | null {
   return card.state === 'pending' ? { ...card, state: 'approving' } : null;
 }
 
-/** What Approve sends for a card: exactly the title and prompt it shows. */
-export function approvedPayload(card: ActionWidget): { title: string; prompt: string } {
-  return { title: card.title, prompt: card.prompt };
+/** What Approve sends for a card: exactly the title, prompt and repository it shows. */
+export function approvedPayload(card: ActionWidget): { title: string; prompt: string; repoId?: string } {
+  return { title: card.title, prompt: card.prompt, ...(card.repoId === '' ? {} : { repoId: card.repoId }) };
 }
