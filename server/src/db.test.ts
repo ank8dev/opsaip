@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openDatabase, SCHEMA_VERSION } from './db';
+import { makeDatabaseFilesPrivate, openDatabase, SCHEMA_VERSION } from './db';
 import { createSqliteTaskStore } from './sqliteTaskStore';
 
 let dir: string;
@@ -421,5 +421,55 @@ describe('migration from version 4 to 5 (repositories)', () => {
     expect(userVersion(again)).toBe(5);
     expect(again.prepare('SELECT id, name FROM repositories').all()).toEqual([{ id: 'r1', name: 'app' }]);
     again.close();
+  });
+});
+
+describe('file modes: other users of this machine cannot read the database', () => {
+  // The usual umask (also macOS's default): without the fix, new files are 0644 and new folders 0755.
+  let umask: number;
+  beforeEach(() => {
+    umask = process.umask(0o022);
+  });
+  afterEach(() => {
+    process.umask(umask);
+  });
+  const mode = (path: string) => statSync(path).mode & 0o777;
+  const SIDE_FILES = ['-wal', '-shm', '-journal'];
+
+  it('creates missing folders with 0700 and a new database file with 0600', () => {
+    const path = join(dir, 'new', 'data', 'opsaip.db');
+    openDatabase(path).close();
+    expect(mode(join(dir, 'new'))).toBe(0o700);
+    expect(mode(join(dir, 'new', 'data'))).toBe(0o700);
+    expect(mode(path)).toBe(0o600);
+  });
+
+  it('makes an existing 0644 database file 0600, and leaves an existing folder as it is', () => {
+    const data = join(dir, 'data');
+    mkdirSync(data);
+    chmodSync(data, 0o755);
+    const path = join(data, 'opsaip.db');
+    openDatabase(path).close();
+    chmodSync(path, 0o644);
+
+    const db = openDatabase(path);
+    expect(userVersion(db)).toBe(SCHEMA_VERSION);
+    db.close();
+    expect(mode(path)).toBe(0o600);
+    expect(mode(data)).toBe(0o755);
+  });
+
+  it("makeDatabaseFilesPrivate: SQLite's -wal, -shm and -journal files too; missing ones are fine", () => {
+    const path = join(dir, 'opsaip.db');
+    writeFileSync(path, '', { mode: 0o644 });
+    for (const suffix of SIDE_FILES) writeFileSync(`${path}${suffix}`, '', { mode: 0o644 });
+    makeDatabaseFilesPrivate(path);
+    expect(mode(path)).toBe(0o600);
+    for (const suffix of SIDE_FILES) expect(mode(`${path}${suffix}`)).toBe(0o600);
+
+    const fresh = join(dir, 'fresh.db');
+    makeDatabaseFilesPrivate(fresh); // creates the file, empty, with 0600
+    expect(mode(fresh)).toBe(0o600);
+    for (const suffix of SIDE_FILES) expect(existsSync(`${fresh}${suffix}`)).toBe(false);
   });
 });

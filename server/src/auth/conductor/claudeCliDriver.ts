@@ -12,9 +12,11 @@
 //   claude -p                                   print (headless) mode; required by the flags below
 //     --input-format stream-json                prompt and follow-ups as JSON lines on stdin
 //     --output-format stream-json --verbose     events as JSON lines on stdout ("stream-json requires --verbose" with -p)
-//     --resume <session id>                     (only to continue a finished run) continue that session
+//     --resume=<session id>                     (only to continue a finished run) continue that session
 //                                               in the same working directory: `-r, --resume [value]`, "Resume a
-//                                               conversation by session ID or name" in `claude --help`
+//                                               conversation by session ID or name" in `claude --help`. One argv
+//                                               entry with "=": the value is optional, so a separate entry
+//                                               starting with "-" would be read as another flag.
 //     --permission-mode acceptEdits             file edits in the working directories without asking
 //     --mcp-config <file> --strict-mcp-config   load ONLY the Opsaip permission server (see claudeArgs)
 //     --permission-prompt-tool mcp__opsaip__approve
@@ -56,7 +58,7 @@ export const TOO_LONG_TO_SHOW =
  */
 export function claudeArgs(mcpConfigPath: string, resumeSessionId?: string): string[] {
   return [
-    ...(resumeSessionId === undefined ? [] : ['--resume', resumeSessionId]),
+    ...(resumeSessionId === undefined ? [] : [`--resume=${resumeSessionId}`]),
     '-p',
     '--input-format',
     'stream-json',
@@ -135,6 +137,7 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
   let emit: (event: RunEvent) => void = () => {};
   let startCalled = false;
   let started = false;
+  let sawInit = false;
   let turnEnded = false;
   let stopping = false;
   let finished = false;
@@ -203,6 +206,9 @@ export function createClaudeCliDriver(options: ClaudeCliDriverOptions): AgentDri
     const parsed = parseAgentLine(line);
     if (parsed === undefined || turnEnded || stopping) return;
     if (parsed.kind === 'init') {
+      // The first init only: the session id goes into argv on resume, so a later line must not replace it.
+      if (sawInit) return;
+      sawInit = true;
       if (parsed.sessionId !== undefined) emit({ type: 'session', sessionId: parsed.sessionId });
     } else if (parsed.kind === 'message') emit({ type: 'message', text: parsed.text });
     else if (parsed.kind === 'result') {
