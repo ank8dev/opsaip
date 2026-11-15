@@ -70,6 +70,8 @@ export interface RunPermission {
   tool: string;
   /** What it would do. From the agent: show as text. */
   summary: string;
+  /** Everything it would do, never cut: Allow approves exactly this. From the agent: show as text. Older servers send none. */
+  detail?: string;
 }
 
 /** A run as GET /v1/runs/:id returns it, checked. The worktree folder is not kept: nothing here needs it. */
@@ -116,9 +118,11 @@ export function parseRunResponse(body: unknown): Run | undefined {
   const run: Run = { id, taskId, status: status as AgentTaskStatus, branch };
   if (permission !== undefined) {
     if (!isRecord(permission)) return undefined;
-    const { id: pid, tool, summary } = permission;
+    const { id: pid, tool, summary, detail } = permission;
     if (typeof pid !== 'string' || pid.trim() === '' || typeof tool !== 'string' || typeof summary !== 'string') return undefined;
     run.permission = { id: pid, tool: tool.slice(0, MAX_TOOL), summary: summary.slice(0, MAX_SUMMARY) };
+    // Never cut: a cut detail would hide part of what Allow approves. The server bounds it.
+    if (typeof detail === 'string') run.permission.detail = detail;
   }
   if (lastMessage !== undefined) {
     if (typeof lastMessage !== 'string') return undefined;

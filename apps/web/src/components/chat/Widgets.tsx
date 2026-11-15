@@ -371,6 +371,13 @@ function PermissionCard({ widget, onAnswer }: Props<PermissionWidget> & { onAnsw
       <p className="op-w-label">Needs you</p>
       <p className="op-w-lead">Claude Code asks to use {widget.tool}.</p>
       <p className="op-w-quote op-w-pre">{widget.summary}</p>
+      {/* The summary is one line and can be cut; Allow approves the whole request, so show all of it. */}
+      {widget.detail !== undefined && widget.detail !== widget.summary && (
+        <>
+          <p className="op-w-label">Full request</p>
+          <pre className="op-w-code">{widget.detail}</pre>
+        </>
+      )}
       {widget.state === 'pending' ? (
         <>
           <div className="op-w-acts">

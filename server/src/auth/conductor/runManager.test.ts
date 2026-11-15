@@ -97,7 +97,7 @@ describe('a run', () => {
     const run = await t.start();
     const waiting = await t.until(run, (view) => view.permission !== undefined);
     expect(waiting.status).toBe('waiting_on_human');
-    expect(waiting.permission).toEqual({ id: expect.any(String), tool: 'Bash', summary: 'npm test' });
+    expect(waiting.permission).toEqual({ id: expect.any(String), tool: 'Bash', summary: 'npm test', detail: 'npm test' });
     expect(t.store.get(run.taskId)).toMatchObject({ status: 'waiting_on_human', note: 'Claude Code asks to use Bash: npm test' });
 
     const answered = t.manager.answerPermission(run.id, waiting.permission!.id, true);

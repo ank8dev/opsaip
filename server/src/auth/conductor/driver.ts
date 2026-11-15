@@ -67,6 +67,12 @@ export interface PermissionRequest {
   tool: string;
   /** What it would do, one line, at most MAX_SUMMARY_CHARS (toolSummary.ts). */
   summary: string;
+  /**
+   * Everything it would do, never cut (describeToolCall in toolSummary.ts):
+   * what the person reads before Allow. A request too long for it is denied
+   * by the driver and never reaches the person.
+   */
+  detail: string;
 }
 
 export interface DriverStartOptions {
